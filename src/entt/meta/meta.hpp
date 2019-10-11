@@ -759,9 +759,9 @@ inline bool operator!=(const meta_any &lhs, const meta_any &rhs) ENTT_NOEXCEPT {
 /*! @brief Opaque container for meta properties of any type. */
 struct meta_prop {
     /**
-     * @brief Constructs an instance from a given node.
-     * @param curr The underlying node with which to construct the instance.
-     */
+      * @brief Constructs an instance from a given node.
+      * @param curr The underlying node with which to construct the instance.
+      */
     meta_prop(const internal::meta_prop_node *curr = nullptr) ENTT_NOEXCEPT
         : node{curr}
     {}
@@ -905,7 +905,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_conv &lhs, const meta_conv &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
@@ -1005,7 +1005,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_ctor &lhs, const meta_ctor &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
@@ -1053,7 +1053,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_dtor &lhs, const meta_dtor &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
@@ -1208,7 +1208,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_data &lhs, const meta_data &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
@@ -1344,7 +1344,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_func &lhs, const meta_func &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
@@ -1753,7 +1753,7 @@ private:
 };
 
 
-/*! @copydoc operator!=(const meta_prop &, const meta_prop &) */
+/*! @copydoc operator!=(const meta_base &, const meta_base &) */
 inline bool operator!=(const meta_type &lhs, const meta_type &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
 }
