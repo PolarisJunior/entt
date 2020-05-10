@@ -12,6 +12,7 @@
   * [Custom entity identifiers: yay or nay?](#custom-entity-identifiers-yay-or-nay)
   * [Warning C4307: integral constant overflow](#warning-C4307-integral-constant-overflow)
   * [Warning C4003: the min, the max and the macro](#warning-C4003-the-min-the-max-and-the-macro)
+  * [The standard and the non-copyable types](#the-standard-and-the-non-copyable-types)
 <!--
 @endcond TURN_OFF_DOXYGEN
 -->
@@ -49,10 +50,15 @@ First of all, there are two things to do in a Windows project:
 * Set the [`_ITERATOR_DEBUG_LEVEL`](https://docs.microsoft.com/cpp/standard-library/iterator-debug-level)
   macro to 0. This will disable checked iterators and iterator debugging.
 
-Moreover, the macro `ENTT_DISABLE_ASSERT` should be defined to disable internal
-checks made by `EnTT` in debug. These are asserts introduced to help the users,
-but require to access to the underlying containers and therefore risk ruining
-the performance in some cases.
+Moreover, the macro `ENTT_ASSERT` should be redefined to disable internal checks
+made by `EnTT` in debug:
+
+```cpp
+#define ENTT_ASSERT(...) ((void)0)
+```
+
+These asserts are introduced to help the users but they require to access to the
+underlying containers and therefore risk ruining the performance in some cases.
 
 With these changes, debug performance should increase enough for most cases. If
 you want something more, you can can also switch to an optimization level `O0`
@@ -126,13 +132,9 @@ here is a workaround in the form of a macro:
 
 ```cpp
 #if defined(_MSC_VER)
-    #define HS(str)\
-        __pragma(warning(push))\
-        __pragma(warning(disable:4307))\
-        entt::hashed_string{str}\
-        __pragma(warning(pop))
+#define HS(str) __pragma(warning(suppress:4307)) entt::hashed_string{str}\
 #else
-    #define HS(str) entt::hashed_string{str}
+#define HS(str) entt::hashed_string{str}
 #endif
 ```
 
@@ -161,3 +163,38 @@ so as to get rid of the extra definitions:
 
 Please refer to [this](https://github.com/skypjack/entt/issues/96) issue for
 more details.
+
+## The standard and the non-copyable types
+
+`EnTT` uses internally the trait `std::is_copy_constructible_v` to check if a
+component is actually copyable. This trait doesn't check if an object can
+actually be copied but only verifies if there is a copy constructor
+available.<br/>
+This can lead to surprising results due to some idiosyncrasies of the standard
+mainly related to the need to guarantee backward compatibility.
+
+For example, `std::vector` defines a copy constructor no matter if its value
+type is copyable or not. As a result, `std::is_copy_constructible_v` is true
+for the following specialization:
+
+```cpp
+struct type {
+    std::vector<std::unique_ptr<action>> vec;
+};
+```
+
+When trying to assign an instance of this type to an entity in the ECS part,
+this may trigger a compilation error because we cannot really make a copy of
+it.<br/>
+As a workaround, users can mark the type explicitly as non-copyable:
+
+```cpp
+struct type {
+    type(const type &) = delete;
+    type & operator=(const type &) = delete;
+
+    std::vector<std::unique_ptr<action>> vec;
+};
+```
+
+Unfortunately, this will also disable aggregate initialization.

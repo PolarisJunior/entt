@@ -6,12 +6,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <algorithm>
 #include <type_traits>
 #include "../config/config.h"
 #include "../core/type_traits.hpp"
 #include "registry.hpp"
 #include "storage.hpp"
+#include "utility.hpp"
 #include "entity.hpp"
 #include "fwd.hpp"
 
@@ -61,8 +61,15 @@ struct basic_collector<> {
      * @return The updated collector.
      */
     template<typename AnyOf>
-    static constexpr auto replace() ENTT_NOEXCEPT {
+    static constexpr auto update() ENTT_NOEXCEPT {
         return basic_collector<matcher<type_list<>, type_list<>, AnyOf>>{};
+    }
+
+    /*! @copydoc update */
+    template<typename AnyOf>
+    [[deprecated("use ::update instead")]]
+    static constexpr auto replace() ENTT_NOEXCEPT {
+        return update<AnyOf>();
     }
 };
 
@@ -96,9 +103,17 @@ struct basic_collector<matcher<type_list<Reject...>, type_list<Require...>, Rule
      * @return The updated collector.
      */
     template<typename AnyOf>
-    static constexpr auto replace() ENTT_NOEXCEPT {
+    static constexpr auto update() ENTT_NOEXCEPT {
         return basic_collector<matcher<type_list<>, type_list<>, AnyOf>, current_type, Other...>{};
     }
+
+    /*! @copydoc update */
+    template<typename AnyOf>
+    [[deprecated("use ::update instead")]]
+    static constexpr auto replace() ENTT_NOEXCEPT {
+        return update<AnyOf>();
+    }
+
 
     /**
      * @brief Updates the filter of the last added matcher.
@@ -115,7 +130,7 @@ struct basic_collector<matcher<type_list<Reject...>, type_list<Require...>, Rule
 
 
 /*! @brief Variable template used to ease the definition of collectors. */
-constexpr basic_collector<> collector{};
+inline constexpr basic_collector<> collector{};
 
 
 /**
@@ -130,8 +145,8 @@ constexpr basic_collector<> collector{};
  * collector:
  *
  * * Observing matcher: an observer will return at least all the living entities
- *   for which one or more of the given components have been explicitly
- *   replaced and not yet destroyed.
+ *   for which one or more of the given components have been updated and not yet
+ *   destroyed.
  * * Grouping matcher: an observer will return at least all the living entities
  *   that would have entered the given group if it existed and that would have
  *   not yet left it.
@@ -160,7 +175,7 @@ constexpr basic_collector<> collector{};
  * behavior.
  *
  * @warning
- * Lifetime of an observer doesn't necessarily have to overcome the one of the
+ * Lifetime of an observer doesn't necessarily have to overcome that of the
  * registry to which it is connected. However, the observer must be disconnected
  * from the registry before being destroyed to avoid crashes due to dangling
  * pointers.
@@ -177,17 +192,20 @@ class basic_observer {
     template<typename... Reject, typename... Require, typename AnyOf>
     struct matcher_handler<matcher<type_list<Reject...>, type_list<Require...>, AnyOf>> {
         template<std::size_t Index>
-        static void maybe_valid_if(basic_observer &obs, const Entity entt, const basic_registry<Entity> &reg) {
-            if(reg.template has<Require...>(entt) && !(reg.template has<Reject>(entt) || ...)) {
-                auto *comp = obs.view.try_get(entt);
-                (comp ? *comp : obs.view.construct(entt)) |= (1 << Index);
+        static void maybe_valid_if(basic_observer &obs, const basic_registry<Entity> &reg, const Entity entt) {
+            if(reg.template has<Require...>(entt) && !reg.template any<Reject...>(entt)) {
+                if(auto *comp = obs.view.try_get(entt); !comp) {
+                    obs.view.emplace(entt);
+                }
+
+                obs.view.get(entt) |= (1 << Index);
             }
         }
 
         template<std::size_t Index>
-        static void discard_if(basic_observer &obs, const Entity entt) {
+        static void discard_if(basic_observer &obs, const basic_registry<Entity> &, const Entity entt) {
             if(auto *value = obs.view.try_get(entt); value && !(*value &= (~(1 << Index)))) {
-                obs.view.destroy(entt);
+                obs.view.erase(entt);
             }
         }
 
@@ -195,14 +213,14 @@ class basic_observer {
         static void connect(basic_observer &obs, basic_registry<Entity> &reg) {
             (reg.template on_destroy<Require>().template connect<&discard_if<Index>>(obs), ...);
             (reg.template on_construct<Reject>().template connect<&discard_if<Index>>(obs), ...);
-            reg.template on_replace<AnyOf>().template connect<&maybe_valid_if<Index>>(obs);
+            reg.template on_update<AnyOf>().template connect<&maybe_valid_if<Index>>(obs);
             reg.template on_destroy<AnyOf>().template connect<&discard_if<Index>>(obs);
         }
 
         static void disconnect(basic_observer &obs, basic_registry<Entity> &reg) {
             (reg.template on_destroy<Require>().disconnect(obs), ...);
             (reg.template on_construct<Reject>().disconnect(obs), ...);
-            reg.template on_replace<AnyOf>().disconnect(obs);
+            reg.template on_update<AnyOf>().disconnect(obs);
             reg.template on_destroy<AnyOf>().disconnect(obs);
         }
     };
@@ -210,19 +228,20 @@ class basic_observer {
     template<typename... Reject, typename... Require, typename... NoneOf, typename... AllOf>
     struct matcher_handler<matcher<type_list<Reject...>, type_list<Require...>, type_list<NoneOf...>, AllOf...>> {
         template<std::size_t Index>
-        static void maybe_valid_if(basic_observer &obs, const Entity entt, const basic_registry<Entity> &reg) {
-            if(reg.template has<AllOf...>(entt) && !(reg.template has<NoneOf>(entt) || ...)
-                    && reg.template has<Require...>(entt) && !(reg.template has<Reject>(entt) || ...))
-            {
-                auto *comp = obs.view.try_get(entt);
-                (comp ? *comp : obs.view.construct(entt)) |= (1 << Index);
+        static void maybe_valid_if(basic_observer &obs, const basic_registry<Entity> &reg, const Entity entt) {
+            if(reg.template has<AllOf..., Require...>(entt) && !reg.template any<NoneOf..., Reject...>(entt)) {
+                if(auto *comp = obs.view.try_get(entt); !comp) {
+                    obs.view.emplace(entt);
+                }
+
+                obs.view.get(entt) |= (1 << Index);
             }
         }
 
         template<std::size_t Index>
-        static void discard_if(basic_observer &obs, const Entity entt) {
+        static void discard_if(basic_observer &obs, const basic_registry<Entity> &, const Entity entt) {
             if(auto *value = obs.view.try_get(entt); value && !(*value &= (~(1 << Index)))) {
-                obs.view.destroy(entt);
+                obs.view.erase(entt);
             }
         }
 
@@ -264,10 +283,10 @@ public:
     /*! @brief Unsigned integer type. */
     using size_type = std::size_t;
     /*! @brief Input iterator type. */
-    using iterator_type = typename sparse_set<Entity>::iterator_type;
+    using iterator = typename sparse_set<Entity>::iterator;
 
     /*! @brief Default constructor. */
-    basic_observer() ENTT_NOEXCEPT
+    basic_observer()
         : target{}, release{}, view{}
     {}
 
@@ -282,12 +301,12 @@ public:
      * @param reg A valid reference to a registry.
      */
     template<typename... Matcher>
-    basic_observer(basic_registry<entity_type> &reg, basic_collector<Matcher...>) ENTT_NOEXCEPT
+    basic_observer(basic_registry<entity_type> &reg, basic_collector<Matcher...>)
         : target{&reg},
           release{},
           view{}
     {
-        connect<Matcher...>(reg, std::make_index_sequence<sizeof...(Matcher)>{});
+        connect<Matcher...>(reg, std::index_sequence_for<Matcher...>{});
     }
 
     /*! @brief Default destructor. */
@@ -313,9 +332,9 @@ public:
     template<typename... Matcher>
     void connect(basic_registry<entity_type> &reg, basic_collector<Matcher...>) {
         disconnect();
-        connect<Matcher...>(reg, std::make_index_sequence<sizeof...(Matcher)>{});
+        connect<Matcher...>(reg, std::index_sequence_for<Matcher...>{});
         target = &reg;
-        view.reset();
+        view.clear();
     }
 
     /*! @brief Disconnects an observer from the registry it keeps track of. */
@@ -366,7 +385,7 @@ public:
      *
      * @return An iterator to the first entity of the observer.
      */
-    iterator_type begin() const ENTT_NOEXCEPT {
+    iterator begin() const ENTT_NOEXCEPT {
         return view.sparse_set<entity_type>::begin();
     }
 
@@ -380,18 +399,17 @@ public:
      * @return An iterator to the entity following the last entity of the
      * observer.
      */
-    iterator_type end() const ENTT_NOEXCEPT {
+    iterator end() const ENTT_NOEXCEPT {
         return view.sparse_set<entity_type>::end();
     }
 
-    /*! @brief Resets the underlying container. */
-    void clear() {
-        view.reset();
+    /*! @brief Clears the underlying container. */
+    void clear() ENTT_NOEXCEPT {
+        view.clear();
     }
 
     /**
-     * @brief Iterates entities and applies the given function object to them,
-     * then clears the observer.
+     * @brief Iterates entities and applies the given function object to them.
      *
      * The function object is invoked for each entity.<br/>
      * The signature of the function must be equivalent to the following form:
@@ -406,19 +424,17 @@ public:
     template<typename Func>
     void each(Func func) const {
         static_assert(std::is_invocable_v<Func, entity_type>);
-        std::for_each(begin(), end(), std::move(func));
+
+        for(const auto entity: *this) {
+            func(entity);
+        }
     }
 
     /**
      * @brief Iterates entities and applies the given function object to them,
      * then clears the observer.
      *
-     * The function object is invoked for each entity.<br/>
-     * The signature of the function must be equivalent to the following form:
-     *
-     * @code{.cpp}
-     * void(const entity_type);
-     * @endcode
+     * @sa each
      *
      * @tparam Func Type of the function object to invoke.
      * @param func A valid function object.
@@ -439,4 +455,4 @@ private:
 }
 
 
-#endif // ENTT_ENTITY_OBSERVER_HPP
+#endif

@@ -2,15 +2,14 @@
 #define ENTT_SIGNAL_DISPATCHER_HPP
 
 
-#include <vector>
-#include <memory>
 #include <cstddef>
-#include <utility>
-#include <algorithm>
+#include <memory>
 #include <type_traits>
+#include <utility>
+#include <vector>
 #include "../config/config.h"
-#include "../core/family.hpp"
-#include "../core/type_traits.hpp"
+#include "../core/fwd.hpp"
+#include "../core/type_info.hpp"
 #include "sigh.hpp"
 
 
@@ -26,24 +25,19 @@ namespace entt {
  * type `Event`, listeners are such that they can be invoked with an argument of
  * type `const Event &`, no matter what the return type is.
  *
- * The types of the instances are `Class &`. Users must guarantee that the
- * lifetimes of the objects overcome the one of the dispatcher itself to avoid
- * crashes.
+ * The dispatcher creates instances of the `sigh` class internally. Refer to the
+ * documentation of the latter for more details.
  */
 class dispatcher {
-    using event_family = family<struct internal_dispatcher_event_family>;
-
-    template<typename Class, typename Event>
-    using instance_type = typename sigh<void(const Event &)>::template instance_type<Class>;
-
-    struct base_wrapper {
-        virtual ~base_wrapper() = default;
+    struct basic_pool {
+        virtual ~basic_pool() = default;
         virtual void publish() = 0;
-        virtual void clear() = 0;
+        virtual void clear() ENTT_NOEXCEPT = 0;
+        virtual id_type type_id() const ENTT_NOEXCEPT = 0;
     };
 
     template<typename Event>
-    struct signal_wrapper: base_wrapper {
+    struct pool_handler final: basic_pool {
         using signal_type = sigh<void(const Event &)>;
         using sink_type = typename signal_type::sink_type;
 
@@ -57,7 +51,7 @@ class dispatcher {
             events.erase(events.cbegin(), events.cbegin()+length);
         }
 
-        void clear() override {
+        void clear() ENTT_NOEXCEPT override {
             events.clear();
         }
 
@@ -67,7 +61,7 @@ class dispatcher {
 
         template<typename... Args>
         void trigger(Args &&... args) {
-            signal.publish({ std::forward<Args>(args)... });
+            signal.publish(Event{std::forward<Args>(args)...});
         }
 
         template<typename... Args>
@@ -75,63 +69,38 @@ class dispatcher {
             events.emplace_back(std::forward<Args>(args)...);
         }
 
+        id_type type_id() const ENTT_NOEXCEPT override {
+            return type_info<Event>::id();
+        }
+
     private:
         signal_type signal{};
         std::vector<Event> events;
     };
 
-    struct wrapper_data {
-        std::unique_ptr<base_wrapper> wrapper;
-        ENTT_ID_TYPE runtime_type;
-    };
-
     template<typename Event>
-    static auto type() ENTT_NOEXCEPT {
-        if constexpr(is_named_type_v<Event>) {
-            return named_type_traits<Event>::value;
-        } else {
-            return event_family::type<Event>;
-        }
-    }
+    pool_handler<Event> & assure() {
+        static_assert(std::is_same_v<Event, std::decay_t<Event>>);
 
-    template<typename Event>
-    signal_wrapper<Event> & assure() {
-        const auto wtype = type<Event>();
-        wrapper_data *wdata = nullptr;
+        if constexpr(has_type_index_v<Event>) {
+            const auto index = type_index<Event>::value();
 
-        if constexpr(is_named_type_v<Event>) {
-            const auto it = std::find_if(wrappers.begin(), wrappers.end(), [wtype](const auto &candidate) {
-                return candidate.wrapper && candidate.runtime_type == wtype;
-            });
-
-            wdata = (it == wrappers.cend() ? &wrappers.emplace_back() : &(*it));
-        } else {
-            if(!(wtype < wrappers.size())) {
-                wrappers.resize(wtype+1);
+            if(!(index < pools.size())) {
+                pools.resize(index+1);
             }
 
-            wdata = &wrappers[wtype];
-
-            if(wdata->wrapper && wdata->runtime_type != wtype) {
-                wrappers.emplace_back();
-                std::swap(wrappers[wtype], wrappers.back());
-                wdata = &wrappers[wtype];
+            if(!pools[index]) {
+                pools[index].reset(new pool_handler<Event>{});
             }
-        }
 
-        if(!wdata->wrapper) {
-            wdata->wrapper = std::make_unique<signal_wrapper<Event>>();
-            wdata->runtime_type = wtype;
+            return static_cast<pool_handler<Event> &>(*pools[index]);
+        } else {
+            auto it = std::find_if(pools.begin(), pools.end(), [id = type_info<Event>::id()](const auto &cpool) { return id == cpool->type_id(); });
+            return static_cast<pool_handler<Event> &>(it == pools.cend() ? *pools.emplace_back(new pool_handler<Event>{}) : **it);
         }
-
-        return static_cast<signal_wrapper<Event> &>(*wdata->wrapper);
     }
 
 public:
-    /*! @brief Type of sink for the given event. */
-    template<typename Event>
-    using sink_type = typename signal_wrapper<Event>::sink_type;
-
     /**
      * @brief Returns a sink object for the given event.
      *
@@ -150,7 +119,7 @@ public:
      * @return A temporary sink object.
      */
     template<typename Event>
-    sink_type<Event> sink() ENTT_NOEXCEPT {
+    auto sink() {
         return assure<Event>().sink();
     }
 
@@ -221,15 +190,15 @@ public:
      * @tparam Event Type of events to discard.
      */
     template<typename... Event>
-    void discard() {
+    void clear() {
         if constexpr(sizeof...(Event) == 0) {
-            std::for_each(wrappers.begin(), wrappers.end(), [](auto &&wdata) {
-                if(wdata.wrapper) {
-                    wdata.wrapper->clear();
+            for(auto &&cpool: pools) {
+                if(cpool) {
+                    cpool->clear();
                 }
-            });
+            }
         } else {
-            (assure<std::decay_t<Event>>().clear(), ...);
+            (assure<Event>().clear(), ...);
         }
     }
 
@@ -255,19 +224,19 @@ public:
      * to reduce at a minimum the time spent in the bodies of the listeners.
      */
     void update() const {
-        for(auto pos = wrappers.size(); pos; --pos) {
-            if(auto &wdata = wrappers[pos-1]; wdata.wrapper) {
-                wdata.wrapper->publish();
+        for(auto pos = pools.size(); pos; --pos) {
+            if(auto &&cpool = pools[pos-1]; cpool) {
+                cpool->publish();
             }
         }
     }
 
 private:
-    std::vector<wrapper_data> wrappers;
+    std::vector<std::unique_ptr<basic_pool>> pools;
 };
 
 
 }
 
 
-#endif // ENTT_SIGNAL_DISPATCHER_HPP
+#endif

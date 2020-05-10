@@ -3,9 +3,11 @@
 #include <type_traits>
 #include <gtest/gtest.h>
 #include <entt/core/hashed_string.hpp>
+#include <entt/core/type_info.hpp>
 #include <entt/core/utility.hpp>
 #include <entt/meta/factory.hpp>
 #include <entt/meta/meta.hpp>
+#include <entt/meta/resolve.hpp>
 
 template<typename Type>
 void set(Type &prop, Type value) {
@@ -17,9 +19,12 @@ Type get(Type &prop) {
     return prop;
 }
 
-enum class properties {
+enum class props {
     prop_int,
-    prop_bool
+    prop_value,
+    prop_bool,
+    key_only,
+    prop_list
 };
 
 struct empty_type {
@@ -120,6 +125,14 @@ struct not_comparable_type {
     bool operator==(const not_comparable_type &) const = delete;
 };
 
+struct unmanageable_type {
+    unmanageable_type() = default;
+    unmanageable_type(const unmanageable_type &) = delete;
+    unmanageable_type(unmanageable_type &&) = delete;
+    unmanageable_type & operator=(const unmanageable_type &) = delete;
+    unmanageable_type & operator=(unmanageable_type &&) = delete;
+};
+
 bool operator!=(const not_comparable_type &, const not_comparable_type &) = delete;
 
 struct an_abstract_type {
@@ -141,86 +154,130 @@ struct concrete_type: an_abstract_type, another_abstract_type {
     void h(char c) override { j = c; }
 };
 
-struct Meta: public ::testing::Test {
+struct Meta: ::testing::Test {
     static void SetUpTestCase() {
-        entt::reflect<double>().conv<int>();
+        entt::meta<double>().conv<int>();
 
-        entt::reflect<char>("char"_hs, std::make_pair(properties::prop_int, 42))
+        entt::meta<char>()
+                .alias("char"_hs)
+                    .prop(props::prop_int, 42)
                 .data<&set<char>, &get<char>>("value"_hs);
 
-        entt::reflect<properties>()
-                .data<properties::prop_bool>("prop_bool"_hs)
-                .data<properties::prop_int>("prop_int"_hs)
-                .data<&set<properties>, &get<properties>>("value"_hs);
+        entt::meta<props>()
+                .data<props::prop_bool>("prop_bool"_hs)
+                    .prop(props::prop_int, 0)
+                    .prop(props::prop_value, 3)
+                .data<props::prop_int>("prop_int"_hs)
+                    .prop(std::make_tuple(std::make_pair(props::prop_bool, true), std::make_pair(props::prop_int, 0), std::make_pair(props::prop_value, 3)))
+                    .prop(props::key_only)
+                .data<props::key_only>("key_only"_hs)
+                    .prop([]() { return props::key_only; })
+                .data<&set<props>, &get<props>>("value"_hs)
+                .data<props::prop_list>("prop_list"_hs)
+                    .props(std::make_pair(props::prop_bool, false), std::make_pair(props::prop_int, 0), std::make_pair(props::prop_value, 3), props::key_only);
 
-        entt::reflect<unsigned int>().data<0u>("min"_hs).data<100u>("max"_hs);
+        entt::meta<unsigned int>().data<0u>("min"_hs).data<100u>("max"_hs);
 
-        entt::reflect<base_type>("base"_hs);
+        entt::meta<base_type>()
+                .alias("base"_hs);
 
-        entt::reflect<derived_type>("derived"_hs, std::make_pair(properties::prop_int, 99))
+        entt::meta<derived_type>()
+                .alias("derived"_hs)
+                    .prop(props::prop_int, 99)
                 .base<base_type>()
-                .ctor<const base_type &, int, char>(std::make_pair(properties::prop_bool, false))
-                .ctor<&derived_factory>(std::make_pair(properties::prop_int, 42))
+                .ctor<const base_type &, int, char>()
+                    .prop(props::prop_bool, false)
+                .ctor<&derived_factory>()
+                    .prop(props::prop_int, 42)
                 .conv<&derived_type::f>()
                 .conv<&derived_type::g>();
 
-        entt::reflect<empty_type>("empty"_hs)
+        entt::meta<empty_type>()
+                .ctor<>()
+                .alias("empty"_hs)
                 .dtor<&empty_type::destroy>();
 
-        entt::reflect<fat_type>("fat"_hs)
+        entt::meta<fat_type>()
+                .alias("fat"_hs)
                 .base<empty_type>()
                 .dtor<&fat_type::destroy>();
 
-        entt::reflect<data_type>("data"_hs)
-                .data<&data_type::i, entt::as_alias_t>("i"_hs, std::make_pair(properties::prop_int, 0))
-                .data<&data_type::j>("j"_hs, std::make_pair(properties::prop_int, 1))
-                .data<&data_type::h>("h"_hs, std::make_pair(properties::prop_int, 2))
-                .data<&data_type::k>("k"_hs, std::make_pair(properties::prop_int, 3))
+        entt::meta<data_type>()
+                .alias("data"_hs)
+                .data<&data_type::i, entt::as_alias_t>("i"_hs)
+                    .prop(props::prop_int, 0)
+                .data<&data_type::j>("j"_hs)
+                    .prop(props::prop_int, 1)
+                .data<&data_type::h>("h"_hs)
+                    .prop(props::prop_int, 2)
+                .data<&data_type::k>("k"_hs)
+                    .prop(props::prop_int, 3)
                 .data<&data_type::empty>("empty"_hs)
                 .data<&data_type::v, entt::as_void_t>("v"_hs);
 
-        entt::reflect<array_type>("array"_hs)
+        entt::meta<array_type>()
+                .alias("array"_hs)
                 .data<&array_type::global>("global"_hs)
                 .data<&array_type::local>("local"_hs);
 
-        entt::reflect<func_type>("func"_hs)
+        entt::meta<func_type>()
+                .alias("func"_hs)
                 .func<entt::overload<int(const base_type &, int, int)>(&func_type::f)>("f3"_hs)
-                .func<entt::overload<int(int, int)>(&func_type::f)>("f2"_hs, std::make_pair(properties::prop_bool, false))
-                .func<entt::overload<int(int) const>(&func_type::f)>("f1"_hs, std::make_pair(properties::prop_bool, false))
-                .func<&func_type::g>("g"_hs, std::make_pair(properties::prop_bool, false))
-                .func<&func_type::h>("h"_hs, std::make_pair(properties::prop_bool, false))
-                .func<&func_type::k>("k"_hs, std::make_pair(properties::prop_bool, false))
+                .func<entt::overload<int(int, int)>(&func_type::f)>("f2"_hs)
+                    .prop(props::prop_bool, false)
+                .func<entt::overload<int(int) const>(&func_type::f)>("f1"_hs)
+                    .prop(props::prop_bool, false)
+                .func<&func_type::g>("g"_hs)
+                    .prop(props::prop_bool, false)
+                .func<&func_type::h>("h"_hs)
+                    .prop(props::prop_bool, false)
+                .func<&func_type::k>("k"_hs)
+                    .prop(props::prop_bool, false)
                 .func<&func_type::v, entt::as_void_t>("v"_hs)
                 .func<&func_type::a, entt::as_alias_t>("a"_hs);
 
-        entt::reflect<setter_getter_type>("setter_getter"_hs)
+        entt::meta<setter_getter_type>()
+                .alias("setter_getter"_hs)
                 .data<&setter_getter_type::static_setter, &setter_getter_type::static_getter>("x"_hs)
                 .data<&setter_getter_type::setter, &setter_getter_type::getter>("y"_hs)
                 .data<&setter_getter_type::static_setter, &setter_getter_type::getter>("z"_hs)
                 .data<&setter_getter_type::setter_with_ref, &setter_getter_type::getter_with_ref>("w"_hs);
 
-        entt::reflect<an_abstract_type>("an_abstract_type"_hs, std::make_pair(properties::prop_bool, false))
+        entt::meta<an_abstract_type>()
+                .alias("an_abstract_type"_hs)
+                    .prop(props::prop_bool, false)
                 .data<&an_abstract_type::i>("i"_hs)
                 .func<&an_abstract_type::f>("f"_hs)
                 .func<&an_abstract_type::g>("g"_hs);
 
-        entt::reflect<another_abstract_type>("another_abstract_type"_hs, std::make_pair(properties::prop_int, 42))
+        entt::meta<another_abstract_type>()
+                .alias("another_abstract_type"_hs)
+                    .prop(props::prop_int, 42)
                 .data<&another_abstract_type::j>("j"_hs)
                 .func<&another_abstract_type::h>("h"_hs);
 
-        entt::reflect<concrete_type>("concrete"_hs)
+        entt::meta<concrete_type>()
+                .alias("concrete"_hs)
                 .base<an_abstract_type>()
                 .base<another_abstract_type>()
                 .func<&concrete_type::f>("f"_hs);
     }
 
     static void SetUpAfterUnregistration() {
-        entt::reflect<double>().conv<float>();
+        entt::meta<double>().conv<float>();
 
-        entt::reflect<derived_type>("my_type"_hs, std::make_pair(properties::prop_bool, false))
+        entt::meta<props>()
+                .data<props::prop_bool>("prop_bool"_hs)
+                    .prop(props::prop_int, 0)
+                    .prop(props::prop_value, 3);
+
+        entt::meta<derived_type>()
+                .alias("my_type"_hs)
+                    .prop(props::prop_bool, false)
                 .ctor<>();
 
-        entt::reflect<another_abstract_type>("your_type"_hs)
+        entt::meta<another_abstract_type>()
+                .alias("your_type"_hs)
                 .data<&another_abstract_type::j>("a_data_member"_hs)
                 .func<&another_abstract_type::h>("a_member_function"_hs);
     }
@@ -232,7 +289,10 @@ struct Meta: public ::testing::Test {
 };
 
 TEST_F(Meta, Resolve) {
-    ASSERT_EQ(entt::resolve<derived_type>(), entt::resolve("derived"_hs));
+    ASSERT_EQ(entt::resolve<derived_type>(), entt::resolve_id("derived"_hs));
+    ASSERT_EQ(entt::resolve<derived_type>(), entt::resolve_type(entt::type_info<derived_type>::id()));
+    // it could be "char"_hs rather than entt::hashed_string::value("char") if it weren't for a bug in VS2017
+    ASSERT_EQ(entt::resolve_if([](auto type) { return type.id() == entt::hashed_string::value("char"); }), entt::resolve<char>());
 
     bool found = false;
 
@@ -243,32 +303,13 @@ TEST_F(Meta, Resolve) {
     ASSERT_TRUE(found);
 }
 
-TEST_F(Meta, MetaAnyFromMetaHandle) {
-    int value = 42;
-    entt::meta_handle handle{value};
-    entt::meta_any any{handle};
-    any.cast<int>() = 3;
-
-    ASSERT_TRUE(any);
-    ASSERT_EQ(any.type(), entt::resolve<int>());
-    ASSERT_EQ(any.try_cast<std::size_t>(), nullptr);
-    ASSERT_EQ(any.try_cast<int>(), handle.data());
-    ASSERT_EQ(std::as_const(any).try_cast<int>(), handle.data());
-    ASSERT_EQ(any.data(), handle.data());
-    ASSERT_EQ(std::as_const(any).data(), handle.data());
-    ASSERT_EQ(value, 3);
-}
-
 TEST_F(Meta, MetaAnySBO) {
     entt::meta_any any{'c'};
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<char>());
     ASSERT_EQ(any.cast<char>(), 'c');
-    ASSERT_EQ(std::as_const(any).cast<char>(), 'c');
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, entt::meta_any{'c'});
     ASSERT_NE(entt::meta_any{'h'}, any);
 }
@@ -280,11 +321,8 @@ TEST_F(Meta, MetaAnyNoSBO) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<fat_type>());
     ASSERT_EQ(any.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(any).cast<fat_type>(), instance);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, entt::meta_any{instance});
     ASSERT_NE(fat_type{}, any);
 }
@@ -295,9 +333,7 @@ TEST_F(Meta, MetaAnyEmpty) {
     ASSERT_FALSE(any);
     ASSERT_FALSE(any.type());
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_FALSE(any.try_cast<empty_type>());
     ASSERT_EQ(any.data(), nullptr);
-    ASSERT_EQ(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, entt::meta_any{});
     ASSERT_NE(entt::meta_any{'c'}, any);
 }
@@ -307,11 +343,8 @@ TEST_F(Meta, MetaAnySBOInPlaceTypeConstruction) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<int>());
     ASSERT_EQ(any.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(any).cast<int>(), 42);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, (entt::meta_any{std::in_place_type<int>, 42}));
     ASSERT_EQ(any, entt::meta_any{42});
     ASSERT_NE(entt::meta_any{3}, any);
@@ -324,11 +357,8 @@ TEST_F(Meta, MetaAnySBOAsAliasConstruction) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<int>());
     ASSERT_EQ(any.cast<int>(), 3);
-    ASSERT_EQ(std::as_const(any).cast<int>(), 3);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, (entt::meta_any{std::ref(value)}));
     ASSERT_NE(any, (entt::meta_any{std::ref(other)}));
     ASSERT_NE(any, entt::meta_any{42});
@@ -342,9 +372,7 @@ TEST_F(Meta, MetaAnySBOCopyConstruction) {
     ASSERT_TRUE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<int>());
     ASSERT_EQ(other.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(other).cast<int>(), 42);
     ASSERT_EQ(other, entt::meta_any{42});
     ASSERT_NE(other, entt::meta_any{0});
 }
@@ -358,9 +386,7 @@ TEST_F(Meta, MetaAnySBOCopyAssignment) {
     ASSERT_TRUE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<int>());
     ASSERT_EQ(other.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(other).cast<int>(), 42);
     ASSERT_EQ(other, entt::meta_any{42});
     ASSERT_NE(other, entt::meta_any{0});
 }
@@ -372,9 +398,7 @@ TEST_F(Meta, MetaAnySBOMoveConstruction) {
     ASSERT_FALSE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<int>());
     ASSERT_EQ(other.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(other).cast<int>(), 42);
     ASSERT_EQ(other, entt::meta_any{42});
     ASSERT_NE(other, entt::meta_any{0});
 }
@@ -388,9 +412,7 @@ TEST_F(Meta, MetaAnySBOMoveAssignment) {
     ASSERT_FALSE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<int>());
     ASSERT_EQ(other.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(other).cast<int>(), 42);
     ASSERT_EQ(other, entt::meta_any{42});
     ASSERT_NE(other, entt::meta_any{0});
 }
@@ -400,9 +422,7 @@ TEST_F(Meta, MetaAnySBODirectAssignment) {
     any = 42;
 
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<int>());
     ASSERT_EQ(any.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(any).cast<int>(), 42);
     ASSERT_EQ(any, entt::meta_any{42});
     ASSERT_NE(entt::meta_any{0}, any);
 }
@@ -414,11 +434,8 @@ TEST_F(Meta, MetaAnyNoSBOInPlaceTypeConstruction) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<fat_type>());
     ASSERT_EQ(any.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(any).cast<fat_type>(), instance);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, (entt::meta_any{std::in_place_type<fat_type>, instance}));
     ASSERT_EQ(any, entt::meta_any{instance});
     ASSERT_NE(entt::meta_any{fat_type{}}, any);
@@ -431,11 +448,8 @@ TEST_F(Meta, MetaAnyNoSBOAsAliasConstruction) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<fat_type>());
     ASSERT_EQ(any.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(any).cast<fat_type>(), instance);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, (entt::meta_any{std::ref(instance)}));
     ASSERT_EQ(any, entt::meta_any{instance});
     ASSERT_NE(entt::meta_any{fat_type{}}, any);
@@ -450,9 +464,7 @@ TEST_F(Meta, MetaAnyNoSBOCopyConstruction) {
     ASSERT_TRUE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<fat_type>());
     ASSERT_EQ(other.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(other).cast<fat_type>(), instance);
     ASSERT_EQ(other, entt::meta_any{instance});
     ASSERT_NE(other, fat_type{});
 }
@@ -468,9 +480,7 @@ TEST_F(Meta, MetaAnyNoSBOCopyAssignment) {
     ASSERT_TRUE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<fat_type>());
     ASSERT_EQ(other.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(other).cast<fat_type>(), instance);
     ASSERT_EQ(other, entt::meta_any{instance});
     ASSERT_NE(other, fat_type{});
 }
@@ -484,9 +494,7 @@ TEST_F(Meta, MetaAnyNoSBOMoveConstruction) {
     ASSERT_FALSE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<fat_type>());
     ASSERT_EQ(other.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(other).cast<fat_type>(), instance);
     ASSERT_EQ(other, entt::meta_any{instance});
     ASSERT_NE(other, fat_type{});
 }
@@ -502,9 +510,7 @@ TEST_F(Meta, MetaAnyNoSBOMoveAssignment) {
     ASSERT_FALSE(any);
     ASSERT_TRUE(other);
     ASSERT_FALSE(other.try_cast<std::size_t>());
-    ASSERT_TRUE(other.try_cast<fat_type>());
     ASSERT_EQ(other.cast<fat_type>(), instance);
-    ASSERT_EQ(std::as_const(other).cast<fat_type>(), instance);
     ASSERT_EQ(other, entt::meta_any{instance});
     ASSERT_NE(other, fat_type{});
 }
@@ -515,9 +521,7 @@ TEST_F(Meta, MetaAnyNoSBODirectAssignment) {
     any = fat_type{&value};
 
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<fat_type>());
     ASSERT_EQ(any.cast<fat_type>(), fat_type{&value});
-    ASSERT_EQ(std::as_const(any).cast<fat_type>(), fat_type{&value});
     ASSERT_EQ(any, entt::meta_any{fat_type{&value}});
     ASSERT_NE(fat_type{}, any);
 }
@@ -528,7 +532,6 @@ TEST_F(Meta, MetaAnyVoidInPlaceTypeConstruction) {
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<char>());
     ASSERT_EQ(any.data(), nullptr);
-    ASSERT_EQ(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any.type(), entt::resolve<void>());
     ASSERT_EQ(any, entt::meta_any{std::in_place_type<void>});
     ASSERT_NE(entt::meta_any{3}, any);
@@ -633,11 +636,8 @@ TEST_F(Meta, MetaAnyEmplace) {
 
     ASSERT_TRUE(any);
     ASSERT_FALSE(any.try_cast<std::size_t>());
-    ASSERT_TRUE(any.try_cast<int>());
     ASSERT_EQ(any.cast<int>(), 42);
-    ASSERT_EQ(std::as_const(any).cast<int>(), 42);
     ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any, (entt::meta_any{std::in_place_type<int>, 42}));
     ASSERT_EQ(any, entt::meta_any{42});
     ASSERT_NE(entt::meta_any{3}, any);
@@ -649,7 +649,6 @@ TEST_F(Meta, MetaAnyEmplaceVoid) {
 
     ASSERT_TRUE(any);
     ASSERT_EQ(any.data(), nullptr);
-    ASSERT_EQ(std::as_const(any).data(), nullptr);
     ASSERT_EQ(any.type(), entt::resolve<void>());
     ASSERT_EQ(any, (entt::meta_any{std::in_place_type<void>}));
 }
@@ -660,9 +659,9 @@ TEST_F(Meta, MetaAnySBOSwap) {
 
     std::swap(lhs, rhs);
 
-    ASSERT_TRUE(lhs.try_cast<int>());
+    ASSERT_FALSE(lhs.try_cast<char>());
     ASSERT_EQ(lhs.cast<int>(), 42);
-    ASSERT_TRUE(rhs.try_cast<char>());
+    ASSERT_FALSE(rhs.try_cast<int>());
     ASSERT_EQ(rhs.cast<char>(), 'c');
 }
 
@@ -694,9 +693,9 @@ TEST_F(Meta, MetaAnySBOWithNoSBOSwap) {
 
     std::swap(lhs, rhs);
 
-    ASSERT_TRUE(lhs.try_cast<char>());
+    ASSERT_FALSE(lhs.try_cast<fat_type>());
     ASSERT_EQ(lhs.cast<char>(), 'c');
-    ASSERT_TRUE(rhs.try_cast<fat_type>());
+    ASSERT_FALSE(rhs.try_cast<char>());
     ASSERT_EQ(rhs.cast<fat_type>().foo, &value);
     ASSERT_EQ(rhs.cast<fat_type>().bar, &value);
 }
@@ -708,13 +707,11 @@ TEST_F(Meta, MetaAnySBOWithEmptySwap) {
     std::swap(lhs, rhs);
 
     ASSERT_FALSE(lhs);
-    ASSERT_TRUE(rhs.try_cast<char>());
     ASSERT_EQ(rhs.cast<char>(), 'c');
 
     std::swap(lhs, rhs);
 
     ASSERT_FALSE(rhs);
-    ASSERT_TRUE(lhs.try_cast<char>());
     ASSERT_EQ(lhs.cast<char>(), 'c');
 }
 
@@ -725,7 +722,6 @@ TEST_F(Meta, MetaAnySBOWithVoidSwap) {
     std::swap(lhs, rhs);
 
     ASSERT_EQ(lhs.type(), entt::resolve<void>());
-    ASSERT_TRUE(rhs.try_cast<char>());
     ASSERT_EQ(rhs.cast<char>(), 'c');
 }
 
@@ -767,9 +763,9 @@ TEST_F(Meta, MetaAnyComparable) {
 
     ASSERT_TRUE(any == any);
     ASSERT_TRUE(any == entt::meta_any{'c'});
-    ASSERT_FALSE(any == entt::meta_any{'a'});
+    ASSERT_FALSE(entt::meta_any{'a'} == any);
     ASSERT_TRUE(any != entt::meta_any{'a'});
-    ASSERT_TRUE(any != entt::meta_any{});
+    ASSERT_TRUE(entt::meta_any{} != any);
 }
 
 TEST_F(Meta, MetaAnyNotComparable) {
@@ -781,7 +777,7 @@ TEST_F(Meta, MetaAnyNotComparable) {
 
     ASSERT_TRUE(any == any);
     ASSERT_FALSE(any == entt::meta_any{not_comparable_type{}});
-    ASSERT_TRUE(any != entt::meta_any{});
+    ASSERT_TRUE(entt::meta_any{} != any);
 }
 
 TEST_F(Meta, MetaAnyCompareVoid) {
@@ -794,9 +790,9 @@ TEST_F(Meta, MetaAnyCompareVoid) {
 
     ASSERT_TRUE(any == any);
     ASSERT_TRUE(any == entt::meta_any{std::in_place_type<void>});
-    ASSERT_FALSE(any == entt::meta_any{'a'});
+    ASSERT_FALSE(entt::meta_any{'a'} == any);
     ASSERT_TRUE(any != entt::meta_any{'a'});
-    ASSERT_TRUE(any != entt::meta_any{});
+    ASSERT_TRUE(entt::meta_any{} != any);
 }
 
 TEST_F(Meta, MetaAnyTryCast) {
@@ -855,41 +851,33 @@ TEST_F(Meta, MetaAnyConstConvert) {
     ASSERT_EQ(other.cast<int>(), 42);
 }
 
-TEST_F(Meta, MetaHandleFromObject) {
-    empty_type empty{};
-    entt::meta_handle handle{empty};
+TEST_F(Meta, MetaAnyUnmanageableType) {
+    unmanageable_type instance;
+    entt::meta_any any{std::ref(instance)};
+    entt::meta_any other = any;
 
-    ASSERT_TRUE(handle);
-    ASSERT_EQ(handle.type(), entt::resolve<empty_type>());
-    ASSERT_EQ(std::as_const(handle).data(), &empty);
-    ASSERT_EQ(handle.data(), &empty);
-}
+    std::swap(any, other);
 
-TEST_F(Meta, MetaHandleFromMetaAny) {
-    entt::meta_any any{42};
-    entt::meta_handle handle{any};
+    ASSERT_TRUE(any);
+    ASSERT_TRUE(other);
 
-    ASSERT_TRUE(handle);
-    ASSERT_EQ(handle.type(), entt::resolve<int>());
-    ASSERT_EQ(std::as_const(handle).data(), any.data());
-    ASSERT_EQ(handle.data(), any.data());
-}
+    ASSERT_EQ(any.type(), entt::resolve<unmanageable_type>());
+    ASSERT_NE(any.data(), nullptr);
+    ASSERT_EQ(any.try_cast<int>(), nullptr);
+    ASSERT_NE(any.try_cast<unmanageable_type>(), nullptr);
 
-TEST_F(Meta, MetaHandleEmpty) {
-    entt::meta_handle handle{};
+    ASSERT_TRUE(any.convert<unmanageable_type>());
+    ASSERT_FALSE(any.convert<int>());
 
-    ASSERT_FALSE(handle);
-    ASSERT_FALSE(handle.type());
-    ASSERT_EQ(std::as_const(handle).data(), nullptr);
-    ASSERT_EQ(handle.data(), nullptr);
+    ASSERT_TRUE(std::as_const(any).convert<unmanageable_type>());
+    ASSERT_FALSE(std::as_const(any).convert<int>());
 }
 
 TEST_F(Meta, MetaProp) {
-    auto prop = entt::resolve<char>().prop(properties::prop_int);
+    auto prop = entt::resolve<char>().prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_NE(prop, entt::meta_prop{});
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 42);
 }
 
@@ -898,7 +886,6 @@ TEST_F(Meta, MetaBase) {
     derived_type derived{};
 
     ASSERT_TRUE(base);
-    ASSERT_NE(base, entt::meta_base{});
     ASSERT_EQ(base.parent(), entt::resolve("derived"_hs));
     ASSERT_EQ(base.type(), entt::resolve<base_type>());
     ASSERT_EQ(base.cast(&derived), static_cast<base_type *>(&derived));
@@ -909,7 +896,6 @@ TEST_F(Meta, MetaConv) {
     double value = 3.;
 
     ASSERT_TRUE(conv);
-    ASSERT_NE(conv, entt::meta_conv{});
     ASSERT_EQ(conv.parent(), entt::resolve<double>());
     ASSERT_EQ(conv.type(), entt::resolve<int>());
 
@@ -925,7 +911,6 @@ TEST_F(Meta, MetaConvAsFreeFunctions) {
     derived_type derived{derived_type{}, 42, 'c'};
 
     ASSERT_TRUE(conv);
-    ASSERT_NE(conv, entt::meta_conv{});
     ASSERT_EQ(conv.parent(), entt::resolve<derived_type>());
     ASSERT_EQ(conv.type(), entt::resolve<int>());
 
@@ -941,7 +926,6 @@ TEST_F(Meta, MetaConvAsMemberFunctions) {
     derived_type derived{derived_type{}, 42, 'c'};
 
     ASSERT_TRUE(conv);
-    ASSERT_NE(conv, entt::meta_conv{});
     ASSERT_EQ(conv.parent(), entt::resolve<derived_type>());
     ASSERT_EQ(conv.type(), entt::resolve<char>());
 
@@ -956,35 +940,32 @@ TEST_F(Meta, MetaCtor) {
     auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int, char>();
 
     ASSERT_TRUE(ctor);
-    ASSERT_NE(ctor, entt::meta_ctor{});
     ASSERT_EQ(ctor.parent(), entt::resolve("derived"_hs));
-    ASSERT_EQ(ctor.size(), entt::meta_ctor::size_type{3});
-    ASSERT_EQ(ctor.arg(entt::meta_ctor::size_type{0}), entt::resolve<base_type>());
-    ASSERT_EQ(ctor.arg(entt::meta_ctor::size_type{1}), entt::resolve<int>());
-    ASSERT_EQ(ctor.arg(entt::meta_ctor::size_type{2}), entt::resolve<char>());
-    ASSERT_FALSE(ctor.arg(entt::meta_ctor::size_type{3}));
+    ASSERT_EQ(ctor.size(), 3u);
+    ASSERT_EQ(ctor.arg(0u), entt::resolve<base_type>());
+    ASSERT_EQ(ctor.arg(1u), entt::resolve<int>());
+    ASSERT_EQ(ctor.arg(2u), entt::resolve<char>());
+    ASSERT_FALSE(ctor.arg(3u));
 
     auto any = ctor.invoke(base_type{}, 42, 'c');
     auto empty = ctor.invoke();
 
     ASSERT_FALSE(empty);
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 
     ctor.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
-    ASSERT_FALSE(ctor.prop(properties::prop_int));
+    ASSERT_FALSE(ctor.prop(props::prop_int));
 
-    auto prop = ctor.prop(properties::prop_bool);
+    auto prop = ctor.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().template cast<bool>());
 }
 
@@ -993,121 +974,83 @@ TEST_F(Meta, MetaCtorFunc) {
 
     ASSERT_TRUE(ctor);
     ASSERT_EQ(ctor.parent(), entt::resolve("derived"_hs));
-    ASSERT_EQ(ctor.size(), entt::meta_ctor::size_type{2});
-    ASSERT_EQ(ctor.arg(entt::meta_ctor::size_type{0}), entt::resolve<base_type>());
-    ASSERT_EQ(ctor.arg(entt::meta_ctor::size_type{1}), entt::resolve<int>());
-    ASSERT_FALSE(ctor.arg(entt::meta_ctor::size_type{2}));
+    ASSERT_EQ(ctor.size(), 2u);
+    ASSERT_EQ(ctor.arg(0u), entt::resolve<base_type>());
+    ASSERT_EQ(ctor.arg(1u), entt::resolve<int>());
+    ASSERT_FALSE(ctor.arg(2u));
 
     auto any = ctor.invoke(derived_type{}, 42);
     auto empty = ctor.invoke(3, 'c');
 
     ASSERT_FALSE(empty);
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 
     ctor.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 42);
     });
 
-    ASSERT_FALSE(ctor.prop(properties::prop_bool));
+    ASSERT_FALSE(ctor.prop(props::prop_bool));
 
-    auto prop = ctor.prop(properties::prop_int);
+    auto prop = ctor.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 42);
 }
 
 TEST_F(Meta, MetaCtorMetaAnyArgs) {
-    auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int, char>();
-    auto any = ctor.invoke(base_type{}, entt::meta_any{42}, entt::meta_any{'c'});
+    auto any = entt::resolve<derived_type>().ctor<const base_type &, int, char>().invoke(base_type{}, 42, 'c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
 TEST_F(Meta, MetaCtorInvalidArgs) {
     auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int, char>();
-    ASSERT_FALSE(ctor.invoke(base_type{}, entt::meta_any{'c'}, entt::meta_any{42}));
+    ASSERT_FALSE(ctor.invoke(base_type{}, 'c', 42));
 }
 
 TEST_F(Meta, MetaCtorCastAndConvert) {
-    auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int, char>();
-    auto any = ctor.invoke(entt::meta_any{derived_type{}}, entt::meta_any{42.}, entt::meta_any{'c'});
+    auto any = entt::resolve<derived_type>().ctor<const base_type &, int, char>().invoke(derived_type{}, 42., 'c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
 TEST_F(Meta, MetaCtorFuncMetaAnyArgs) {
-    auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int>();
-    auto any = ctor.invoke(base_type{}, entt::meta_any{42});
+    auto any = entt::resolve<derived_type>().ctor<const base_type &, int>().invoke(base_type{}, 42);
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
 TEST_F(Meta, MetaCtorFuncInvalidArgs) {
     auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int>();
-    ASSERT_FALSE(ctor.invoke(base_type{}, entt::meta_any{'c'}));
+    ASSERT_FALSE(ctor.invoke(base_type{}, 'c'));
 }
 
 TEST_F(Meta, MetaCtorFuncCastAndConvert) {
-    auto ctor = entt::resolve<derived_type>().ctor<const base_type &, int>();
-    auto any = ctor.invoke(entt::meta_any{derived_type{}}, entt::meta_any{42.});
+    auto any = entt::resolve<derived_type>().ctor<const base_type &, int>().invoke(derived_type{}, 42.);
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
-
-TEST_F(Meta, MetaDtor) {
-    auto dtor = entt::resolve<empty_type>().dtor();
-    empty_type empty{};
-
-    ASSERT_TRUE(dtor);
-    ASSERT_NE(dtor, entt::meta_dtor{});
-    ASSERT_EQ(dtor.parent(), entt::resolve("empty"_hs));
-    ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_TRUE(dtor.invoke(empty));
-    ASSERT_EQ(empty_type::counter, 1);
-}
-
-TEST_F(Meta, MetaDtorMetaAnyArg) {
-    auto dtor = entt::resolve<empty_type>().dtor();
-    entt::meta_any any{empty_type{}};
-
-    ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_TRUE(dtor.invoke(any));
-    ASSERT_EQ(empty_type::counter, 1);
-}
-
-TEST_F(Meta, MetaDtorMetaAnyInvalidArg) {
-    auto instance = 0;
-    ASSERT_FALSE(entt::resolve<empty_type>().dtor().invoke(instance));
-}
-
 
 TEST_F(Meta, MetaData) {
     auto data = entt::resolve<data_type>().data("i"_hs);
     data_type instance{};
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("data"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "i"_hs);
+    ASSERT_EQ(data.alias(), "i"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 0);
@@ -1115,17 +1058,16 @@ TEST_F(Meta, MetaData) {
     ASSERT_EQ(data.get(instance).cast<int>(), 42);
 
     data.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 0);
     });
 
-    ASSERT_FALSE(data.prop(properties::prop_bool));
+    ASSERT_FALSE(data.prop(props::prop_bool));
 
-    auto prop = data.prop(properties::prop_int);
+    auto prop = data.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 0);
 }
 
@@ -1136,7 +1078,7 @@ TEST_F(Meta, MetaDataConst) {
     ASSERT_TRUE(data);
     ASSERT_EQ(data.parent(), entt::resolve("data"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "j"_hs);
+    ASSERT_EQ(data.alias(), "j"_hs);
     ASSERT_TRUE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 1);
@@ -1144,17 +1086,16 @@ TEST_F(Meta, MetaDataConst) {
     ASSERT_EQ(data.get(instance).cast<int>(), 1);
 
     data.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 1);
     });
 
-    ASSERT_FALSE(data.prop(properties::prop_bool));
+    ASSERT_FALSE(data.prop(props::prop_bool));
 
-    auto prop = data.prop(properties::prop_int);
+    auto prop = data.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 1);
 }
 
@@ -1164,7 +1105,7 @@ TEST_F(Meta, MetaDataStatic) {
     ASSERT_TRUE(data);
     ASSERT_EQ(data.parent(), entt::resolve("data"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "h"_hs);
+    ASSERT_EQ(data.alias(), "h"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_TRUE(data.is_static());
     ASSERT_EQ(data.get({}).cast<int>(), 2);
@@ -1172,17 +1113,16 @@ TEST_F(Meta, MetaDataStatic) {
     ASSERT_EQ(data.get({}).cast<int>(), 42);
 
     data.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 2);
     });
 
-    ASSERT_FALSE(data.prop(properties::prop_bool));
+    ASSERT_FALSE(data.prop(props::prop_bool));
 
-    auto prop = data.prop(properties::prop_int);
+    auto prop = data.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 2);
 }
 
@@ -1192,7 +1132,7 @@ TEST_F(Meta, MetaDataConstStatic) {
     ASSERT_TRUE(data);
     ASSERT_EQ(data.parent(), entt::resolve("data"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "k"_hs);
+    ASSERT_EQ(data.alias(), "k"_hs);
     ASSERT_TRUE(data.is_const());
     ASSERT_TRUE(data.is_static());
     ASSERT_EQ(data.get({}).cast<int>(), 3);
@@ -1200,25 +1140,23 @@ TEST_F(Meta, MetaDataConstStatic) {
     ASSERT_EQ(data.get({}).cast<int>(), 3);
 
     data.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 3);
     });
 
-    ASSERT_FALSE(data.prop(properties::prop_bool));
+    ASSERT_FALSE(data.prop(props::prop_bool));
 
-    auto prop = data.prop(properties::prop_int);
+    auto prop = data.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 3);
 }
 
 TEST_F(Meta, MetaDataGetMetaAnyArg) {
-    auto data = entt::resolve<data_type>().data("i"_hs);
     entt::meta_any any{data_type{}};
     any.cast<data_type>().i = 99;
-    const auto value = data.get(any);
+    const auto value = entt::resolve<data_type>().data("i"_hs).get(any);
 
     ASSERT_TRUE(value);
     ASSERT_TRUE(value.cast<int>());
@@ -1231,12 +1169,11 @@ TEST_F(Meta, MetaDataGetInvalidArg) {
 }
 
 TEST_F(Meta, MetaDataSetMetaAnyArg) {
-    auto data = entt::resolve<data_type>().data("i"_hs);
     entt::meta_any any{data_type{}};
     entt::meta_any value{42};
 
     ASSERT_EQ(any.cast<data_type>().i, 0);
-    ASSERT_TRUE(data.set(any, value));
+    ASSERT_TRUE(entt::resolve<data_type>().data("i"_hs).set(any, value));
     ASSERT_EQ(any.cast<data_type>().i, 42);
 }
 
@@ -1245,20 +1182,18 @@ TEST_F(Meta, MetaDataSetInvalidArg) {
 }
 
 TEST_F(Meta, MetaDataSetCast) {
-    auto data = entt::resolve<data_type>().data("empty"_hs);
     data_type instance{};
 
     ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_TRUE(data.set(instance, fat_type{}));
+    ASSERT_TRUE(entt::resolve<data_type>().data("empty"_hs).set(instance, fat_type{}));
     ASSERT_EQ(empty_type::counter, 1);
 }
 
 TEST_F(Meta, MetaDataSetConvert) {
-    auto data = entt::resolve<data_type>().data("i"_hs);
     data_type instance{};
 
     ASSERT_EQ(instance.i, 0);
-    ASSERT_TRUE(data.set(instance, 3.));
+    ASSERT_TRUE(entt::resolve<data_type>().data("i"_hs).set(instance, 3.));
     ASSERT_EQ(instance.i, 3);
 }
 
@@ -1267,10 +1202,9 @@ TEST_F(Meta, MetaDataSetterGetterAsFreeFunctions) {
     setter_getter_type instance{};
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("setter_getter"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "x"_hs);
+    ASSERT_EQ(data.alias(), "x"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 0);
@@ -1283,10 +1217,9 @@ TEST_F(Meta, MetaDataSetterGetterAsMemberFunctions) {
     setter_getter_type instance{};
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("setter_getter"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "y"_hs);
+    ASSERT_EQ(data.alias(), "y"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 0);
@@ -1299,10 +1232,9 @@ TEST_F(Meta, MetaDataSetterGetterWithRefAsMemberFunctions) {
     setter_getter_type instance{};
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("setter_getter"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "w"_hs);
+    ASSERT_EQ(data.alias(), "w"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 0);
@@ -1315,10 +1247,9 @@ TEST_F(Meta, MetaDataSetterGetterMixed) {
     setter_getter_type instance{};
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("setter_getter"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int>());
-    ASSERT_EQ(data.identifier(), "z"_hs);
+    ASSERT_EQ(data.alias(), "z"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_EQ(data.get(instance).cast<int>(), 0);
@@ -1334,10 +1265,9 @@ TEST_F(Meta, MetaDataArrayStatic) {
     array_type::global[2] = 7;
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("array"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int[3]>());
-    ASSERT_EQ(data.identifier(), "global"_hs);
+    ASSERT_EQ(data.alias(), "global"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_TRUE(data.is_static());
     ASSERT_TRUE(data.type().is_array());
@@ -1364,10 +1294,9 @@ TEST_F(Meta, MetaDataArray) {
     instance.local[2] = 7;
 
     ASSERT_TRUE(data);
-    ASSERT_NE(data, entt::meta_data{});
     ASSERT_EQ(data.parent(), entt::resolve("array"_hs));
     ASSERT_EQ(data.type(), entt::resolve<int[3]>());
-    ASSERT_EQ(data.identifier(), "local"_hs);
+    ASSERT_EQ(data.alias(), "local"_hs);
     ASSERT_FALSE(data.is_const());
     ASSERT_FALSE(data.is_static());
     ASSERT_TRUE(data.type().is_array());
@@ -1413,16 +1342,15 @@ TEST_F(Meta, MetaFunc) {
     func_type instance{};
 
     ASSERT_TRUE(func);
-    ASSERT_NE(func, entt::meta_func{});
     ASSERT_EQ(func.parent(), entt::resolve("func"_hs));
-    ASSERT_EQ(func.identifier(), "f2"_hs);
-    ASSERT_EQ(func.size(), entt::meta_func::size_type{2});
+    ASSERT_EQ(func.alias(), "f2"_hs);
+    ASSERT_EQ(func.size(), 2u);
     ASSERT_FALSE(func.is_const());
     ASSERT_FALSE(func.is_static());
     ASSERT_EQ(func.ret(), entt::resolve<int>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{0}), entt::resolve<int>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{1}), entt::resolve<int>());
-    ASSERT_FALSE(func.arg(entt::meta_func::size_type{2}));
+    ASSERT_EQ(func.arg(0u), entt::resolve<int>());
+    ASSERT_EQ(func.arg(1u), entt::resolve<int>());
+    ASSERT_FALSE(func.arg(2u));
 
     auto any = func.invoke(instance, 3, 2);
     auto empty = func.invoke(instance);
@@ -1434,17 +1362,16 @@ TEST_F(Meta, MetaFunc) {
     ASSERT_EQ(func_type::value, 3);
 
     func.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
-    ASSERT_FALSE(func.prop(properties::prop_int));
+    ASSERT_FALSE(func.prop(props::prop_int));
 
-    auto prop = func.prop(properties::prop_bool);
+    auto prop = func.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().cast<bool>());
 }
 
@@ -1454,13 +1381,13 @@ TEST_F(Meta, MetaFuncConst) {
 
     ASSERT_TRUE(func);
     ASSERT_EQ(func.parent(), entt::resolve("func"_hs));
-    ASSERT_EQ(func.identifier(), "f1"_hs);
-    ASSERT_EQ(func.size(), entt::meta_func::size_type{1});
+    ASSERT_EQ(func.alias(), "f1"_hs);
+    ASSERT_EQ(func.size(), 1u);
     ASSERT_TRUE(func.is_const());
     ASSERT_FALSE(func.is_static());
     ASSERT_EQ(func.ret(), entt::resolve<int>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{0}), entt::resolve<int>());
-    ASSERT_FALSE(func.arg(entt::meta_func::size_type{1}));
+    ASSERT_EQ(func.arg(0u), entt::resolve<int>());
+    ASSERT_FALSE(func.arg(1u));
 
     auto any = func.invoke(instance, 4);
     auto empty = func.invoke(instance, 'c');
@@ -1471,17 +1398,16 @@ TEST_F(Meta, MetaFuncConst) {
     ASSERT_EQ(any.cast<int>(), 16);
 
     func.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
-    ASSERT_FALSE(func.prop(properties::prop_int));
+    ASSERT_FALSE(func.prop(props::prop_int));
 
-    auto prop = func.prop(properties::prop_bool);
+    auto prop = func.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().cast<bool>());
 }
 
@@ -1491,13 +1417,13 @@ TEST_F(Meta, MetaFuncRetVoid) {
 
     ASSERT_TRUE(func);
     ASSERT_EQ(func.parent(), entt::resolve("func"_hs));
-    ASSERT_EQ(func.identifier(), "g"_hs);
-    ASSERT_EQ(func.size(), entt::meta_func::size_type{1});
+    ASSERT_EQ(func.alias(), "g"_hs);
+    ASSERT_EQ(func.size(), 1u);
     ASSERT_FALSE(func.is_const());
     ASSERT_FALSE(func.is_static());
     ASSERT_EQ(func.ret(), entt::resolve<void>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{0}), entt::resolve<int>());
-    ASSERT_FALSE(func.arg(entt::meta_func::size_type{1}));
+    ASSERT_EQ(func.arg(0u), entt::resolve<int>());
+    ASSERT_FALSE(func.arg(1u));
 
     auto any = func.invoke(instance, 5);
 
@@ -1506,17 +1432,16 @@ TEST_F(Meta, MetaFuncRetVoid) {
     ASSERT_EQ(func_type::value, 25);
 
     func.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
-    ASSERT_FALSE(func.prop(properties::prop_int));
+    ASSERT_FALSE(func.prop(props::prop_int));
 
-    auto prop = func.prop(properties::prop_bool);
+    auto prop = func.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().cast<bool>());
 }
 
@@ -1526,13 +1451,13 @@ TEST_F(Meta, MetaFuncStatic) {
 
     ASSERT_TRUE(func);
     ASSERT_EQ(func.parent(), entt::resolve("func"_hs));
-    ASSERT_EQ(func.identifier(), "h"_hs);
-    ASSERT_EQ(func.size(), entt::meta_func::size_type{1});
+    ASSERT_EQ(func.alias(), "h"_hs);
+    ASSERT_EQ(func.size(), 1u);
     ASSERT_FALSE(func.is_const());
     ASSERT_TRUE(func.is_static());
     ASSERT_EQ(func.ret(), entt::resolve<int>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{0}), entt::resolve<int>());
-    ASSERT_FALSE(func.arg(entt::meta_func::size_type{1}));
+    ASSERT_EQ(func.arg(0u), entt::resolve<int>());
+    ASSERT_FALSE(func.arg(1u));
 
     auto any = func.invoke({}, 3);
     auto empty = func.invoke({}, 'c');
@@ -1543,17 +1468,16 @@ TEST_F(Meta, MetaFuncStatic) {
     ASSERT_EQ(any.cast<int>(), 6);
 
     func.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
-    ASSERT_FALSE(func.prop(properties::prop_int));
+    ASSERT_FALSE(func.prop(props::prop_int));
 
-    auto prop = func.prop(properties::prop_bool);
+    auto prop = func.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().cast<bool>());
 }
 
@@ -1562,13 +1486,13 @@ TEST_F(Meta, MetaFuncStaticRetVoid) {
 
     ASSERT_TRUE(func);
     ASSERT_EQ(func.parent(), entt::resolve("func"_hs));
-    ASSERT_EQ(func.identifier(), "k"_hs);
-    ASSERT_EQ(func.size(), entt::meta_func::size_type{1});
+    ASSERT_EQ(func.alias(), "k"_hs);
+    ASSERT_EQ(func.size(), 1u);
     ASSERT_FALSE(func.is_const());
     ASSERT_TRUE(func.is_static());
     ASSERT_EQ(func.ret(), entt::resolve<void>());
-    ASSERT_EQ(func.arg(entt::meta_func::size_type{0}), entt::resolve<int>());
-    ASSERT_FALSE(func.arg(entt::meta_func::size_type{1}));
+    ASSERT_EQ(func.arg(0u), entt::resolve<int>());
+    ASSERT_FALSE(func.arg(1u));
 
     auto any = func.invoke({}, 42);
 
@@ -1578,24 +1502,22 @@ TEST_F(Meta, MetaFuncStaticRetVoid) {
 
     func.prop([](auto *prop) {
         ASSERT_TRUE(prop);
-        ASSERT_EQ(prop->key(), properties::prop_bool);
+        ASSERT_EQ(prop->key(), props::prop_bool);
         ASSERT_FALSE(prop->value().template cast<bool>());
     });
 
-    ASSERT_FALSE(func.prop(properties::prop_int));
+    ASSERT_FALSE(func.prop(props::prop_int));
 
-    auto prop = func.prop(properties::prop_bool);
+    auto prop = func.prop(props::prop_bool);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_bool);
+    ASSERT_EQ(prop.key(), props::prop_bool);
     ASSERT_FALSE(prop.value().cast<bool>());
 }
 
 TEST_F(Meta, MetaFuncMetaAnyArgs) {
-    auto func = entt::resolve<func_type>().func("f1"_hs);
     func_type instance;
-
-    auto any = func.invoke(instance, entt::meta_any{3});
+    auto any = entt::resolve<func_type>().func("f1"_hs).invoke(instance, 3);
 
     ASSERT_TRUE(any);
     ASSERT_EQ(any.type(), entt::resolve<int>());
@@ -1603,17 +1525,14 @@ TEST_F(Meta, MetaFuncMetaAnyArgs) {
 }
 
 TEST_F(Meta, MetaFuncInvalidArgs) {
-    auto func = entt::resolve<func_type>().func("f1"_hs);
     empty_type instance;
 
-    ASSERT_FALSE(func.invoke(instance, entt::meta_any{'c'}));
+    ASSERT_FALSE(entt::resolve<func_type>().func("f1"_hs).invoke(instance, 'c'));
 }
 
 TEST_F(Meta, MetaFuncCastAndConvert) {
-    auto func = entt::resolve<func_type>().func("f3"_hs);
     func_type instance;
-
-    auto any = func.invoke(instance, derived_type{}, 0, 3.);
+    auto any = entt::resolve<func_type>().func("f3"_hs).invoke(instance, derived_type{}, 0, 3.);
 
     ASSERT_TRUE(any);
     ASSERT_EQ(any.type(), entt::resolve<int>());
@@ -1644,8 +1563,8 @@ TEST_F(Meta, MetaFuncByReference) {
     entt::meta_any any{3};
     int value = 4;
 
-    ASSERT_EQ(func.invoke({}, value).cast<int>(), 8);
-    ASSERT_EQ(func.invoke({}, any).cast<int>(), 6);
+    ASSERT_EQ(func.invoke({}, std::ref(value)).cast<int>(), 8);
+    ASSERT_EQ(func.invoke({}, *any).cast<int>(), 6);
     ASSERT_EQ(any.cast<int>(), 6);
     ASSERT_EQ(value, 8);
 }
@@ -1655,20 +1574,20 @@ TEST_F(Meta, MetaType) {
 
     ASSERT_TRUE(type);
     ASSERT_NE(type, entt::meta_type{});
-    ASSERT_EQ(type.identifier(), "derived"_hs);
+    ASSERT_EQ(type.alias(), "derived"_hs);
+    ASSERT_EQ(type.type_id(), entt::type_info<derived_type>::id());
 
     type.prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_int);
+        ASSERT_EQ(prop.key(), props::prop_int);
         ASSERT_EQ(prop.value(), 99);
     });
 
-    ASSERT_FALSE(type.prop(properties::prop_bool));
+    ASSERT_FALSE(type.prop(props::prop_bool));
 
-    auto prop = type.prop(properties::prop_int);
+    auto prop = type.prop(props::prop_int);
 
     ASSERT_TRUE(prop);
-    ASSERT_EQ(prop.key(), properties::prop_int);
+    ASSERT_EQ(prop.key(), props::prop_int);
     ASSERT_EQ(prop.value(), 99);
 }
 
@@ -1676,7 +1595,7 @@ TEST_F(Meta, MetaTypeTraits) {
     ASSERT_TRUE(entt::resolve<void>().is_void());
     ASSERT_TRUE(entt::resolve<bool>().is_integral());
     ASSERT_TRUE(entt::resolve<double>().is_floating_point());
-    ASSERT_TRUE(entt::resolve<properties>().is_enum());
+    ASSERT_TRUE(entt::resolve<props>().is_enum());
     ASSERT_TRUE(entt::resolve<union_type>().is_union());
     ASSERT_TRUE(entt::resolve<derived_type>().is_class());
     ASSERT_TRUE(entt::resolve<int *>().is_pointer());
@@ -1689,6 +1608,12 @@ TEST_F(Meta, MetaTypeRemovePointer) {
     ASSERT_EQ(entt::resolve<void *>().remove_pointer(), entt::resolve<void>());
     ASSERT_EQ(entt::resolve<int(*)(char, double)>().remove_pointer(), entt::resolve<int(char, double)>());
     ASSERT_EQ(entt::resolve<derived_type>().remove_pointer(), entt::resolve<derived_type>());
+}
+
+TEST_F(Meta, MetaTypeRemoveExtent) {
+    ASSERT_EQ(entt::resolve<int[3]>().remove_extent(), entt::resolve<int>());
+    ASSERT_EQ(entt::resolve<int[3][3]>().remove_extent(), entt::resolve<int[3]>());
+    ASSERT_EQ(entt::resolve<derived_type>().remove_extent(), entt::resolve<derived_type>());
 }
 
 TEST_F(Meta, MetaTypeBase) {
@@ -1734,11 +1659,6 @@ TEST_F(Meta, MetaTypeCtor) {
     ASSERT_TRUE((type.ctor<const derived_type &, double>()));
 }
 
-TEST_F(Meta, MetaTypeDtor) {
-    ASSERT_TRUE(entt::resolve<fat_type>().dtor());
-    ASSERT_FALSE(entt::resolve<int>().dtor());
-}
-
 TEST_F(Meta, MetaTypeData) {
     auto type = entt::resolve<data_type>();
     int counter{};
@@ -1764,91 +1684,61 @@ TEST_F(Meta, MetaTypeFunc) {
 }
 
 TEST_F(Meta, MetaTypeConstruct) {
-    auto type = entt::resolve<derived_type>();
-    auto any = type.construct(base_type{}, 42, 'c');
+    auto any = entt::resolve<derived_type>().construct(base_type{}, 42, 'c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
-TEST_F(Meta, MetaTypeConstructMetaAnyArgs) {
-    auto type = entt::resolve<derived_type>();
-    auto any = type.construct(entt::meta_any{base_type{}}, entt::meta_any{42}, entt::meta_any{'c'});
+TEST_F(Meta, MetaTypeConstructNoArgs) {
+    // this should work, no other tests required
+    auto any = entt::resolve<empty_type>().construct();
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
+}
+
+TEST_F(Meta, MetaTypeConstructMetaAnyArgs) {
+    auto any = entt::resolve<derived_type>().construct(base_type{}, 42, 'c');
+
+    ASSERT_TRUE(any);
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
 TEST_F(Meta, MetaTypeConstructInvalidArgs) {
-    auto type = entt::resolve<derived_type>();
-    auto any = type.construct(entt::meta_any{base_type{}}, entt::meta_any{'c'}, entt::meta_any{42});
-    ASSERT_FALSE(any);
+    ASSERT_FALSE(entt::resolve<derived_type>().construct(base_type{}, 'c', 42));
 }
 
 TEST_F(Meta, MetaTypeLessArgs) {
-    auto type = entt::resolve<derived_type>();
-    auto any = type.construct(base_type{});
-    ASSERT_FALSE(any);
+    ASSERT_FALSE(entt::resolve<derived_type>().construct(base_type{}));
 }
 
 TEST_F(Meta, MetaTypeConstructCastAndConvert) {
-    auto type = entt::resolve<derived_type>();
-    auto any = type.construct(entt::meta_any{derived_type{}}, entt::meta_any{42.}, entt::meta_any{'c'});
+    auto any = entt::resolve<derived_type>().construct(derived_type{}, 42., 'c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.try_cast<derived_type>());
     ASSERT_EQ(any.cast<derived_type>().i, 42);
     ASSERT_EQ(any.cast<derived_type>().c, 'c');
 }
 
-TEST_F(Meta, MetaTypeDestroyDtor) {
-    auto type = entt::resolve<empty_type>();
-    empty_type instance;
+TEST_F(Meta, MetaTypeDetach) {
+    ASSERT_TRUE(entt::resolve("char"_hs));
 
-    ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_TRUE(type.destroy(instance));
-    ASSERT_EQ(empty_type::counter, 1);
-}
+    entt::resolve([](auto type) {
+        if(type.alias() == "char"_hs) {
+            type.detach();
+        }
+    });
 
-TEST_F(Meta, MetaTypeDestroyDtorInvalidArg) {
-    auto type = entt::resolve<empty_type>();
-    auto instance = 'c';
+    ASSERT_FALSE(entt::resolve("char"_hs));
+    ASSERT_EQ(entt::resolve<char>().alias(), "char"_hs);
+    ASSERT_EQ(entt::resolve<char>().prop(props::prop_int).value().cast<int>(), 42);
+    ASSERT_TRUE(entt::resolve<char>().data("value"_hs));
 
-    ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_FALSE(type.destroy(instance));
-    ASSERT_EQ(empty_type::counter, 0);
-}
+    entt::meta_factory<char>().alias("char"_hs);
 
-TEST_F(Meta, MetaTypeDestroyDtorCastAndConvert) {
-    auto type = entt::resolve<empty_type>();
-    fat_type instance{};
-
-    ASSERT_EQ(empty_type::counter, 0);
-    ASSERT_FALSE(type.destroy(instance));
-    ASSERT_EQ(empty_type::counter, 0);
-}
-
-TEST_F(Meta, MetaTypeDestroyNoDtor) {
-    auto instance = 'c';
-    ASSERT_TRUE(entt::resolve<char>().destroy(instance));
-}
-
-TEST_F(Meta, MetaTypeDestroyNoDtorInvalidArg) {
-    auto instance = 42;
-    ASSERT_FALSE(entt::resolve<char>().destroy(instance));
-}
-
-TEST_F(Meta, MetaTypeDestroyNoDtorVoid) {
-    ASSERT_FALSE(entt::resolve<void>().destroy({}));
-}
-
-TEST_F(Meta, MetaTypeDestroyNoDtorCastAndConvert) {
-    auto instance = 42.;
-    ASSERT_FALSE(entt::resolve<int>().destroy(instance));
+    ASSERT_TRUE(entt::resolve("char"_hs));
 }
 
 TEST_F(Meta, MetaDataFromBase) {
@@ -1895,8 +1785,8 @@ TEST_F(Meta, MetaFuncFromBase) {
 
 TEST_F(Meta, MetaPropFromBase) {
     auto type = entt::resolve<concrete_type>();
-    auto prop_bool = type.prop(properties::prop_bool);
-    auto prop_int = type.prop(properties::prop_int);
+    auto prop_bool = type.prop(props::prop_bool);
+    auto prop_int = type.prop(props::prop_int);
 
     ASSERT_TRUE(prop_bool);
     ASSERT_TRUE(prop_int);
@@ -1909,6 +1799,7 @@ TEST_F(Meta, AbstractClass) {
     auto type = entt::resolve<an_abstract_type>();
     concrete_type instance;
 
+    ASSERT_EQ(type.type_id(), entt::type_info<an_abstract_type>::id());
     ASSERT_EQ(instance.i, 0);
 
     type.func("f"_hs).invoke(instance, 3);
@@ -1921,7 +1812,7 @@ TEST_F(Meta, AbstractClass) {
 }
 
 TEST_F(Meta, EnumAndNamedConstants) {
-    auto type = entt::resolve<properties>();
+    auto type = entt::resolve<props>();
 
     ASSERT_TRUE(type.data("prop_bool"_hs));
     ASSERT_TRUE(type.data("prop_int"_hs));
@@ -1929,11 +1820,11 @@ TEST_F(Meta, EnumAndNamedConstants) {
     ASSERT_EQ(type.data("prop_bool"_hs).type(), type);
     ASSERT_EQ(type.data("prop_int"_hs).type(), type);
 
-    ASSERT_FALSE(type.data("prop_bool"_hs).set({}, properties::prop_int));
-    ASSERT_FALSE(type.data("prop_int"_hs).set({}, properties::prop_bool));
+    ASSERT_FALSE(type.data("prop_bool"_hs).set({}, props::prop_int));
+    ASSERT_FALSE(type.data("prop_int"_hs).set({}, props::prop_bool));
 
-    ASSERT_EQ(type.data("prop_bool"_hs).get({}).cast<properties>(), properties::prop_bool);
-    ASSERT_EQ(type.data("prop_int"_hs).get({}).cast<properties>(), properties::prop_int);
+    ASSERT_EQ(type.data("prop_bool"_hs).get({}).cast<props>(), props::prop_bool);
+    ASSERT_EQ(type.data("prop_int"_hs).get({}).cast<props>(), props::prop_int);
 }
 
 TEST_F(Meta, ArithmeticTypeAndNamedConstants) {
@@ -1953,38 +1844,58 @@ TEST_F(Meta, ArithmeticTypeAndNamedConstants) {
 }
 
 TEST_F(Meta, Variables) {
-    auto p_data = entt::resolve<properties>().data("value"_hs);
+    auto p_data = entt::resolve<props>().data("value"_hs);
     auto c_data = entt::resolve("char"_hs).data("value"_hs);
 
-    properties prop{properties::prop_int};
+    props prop{props::prop_int};
     char c = 'c';
 
-    p_data.set(prop, properties::prop_bool);
+    p_data.set(prop, props::prop_bool);
     c_data.set(c, 'x');
 
-    ASSERT_EQ(p_data.get(prop).cast<properties>(), properties::prop_bool);
+    ASSERT_EQ(p_data.get(prop).cast<props>(), props::prop_bool);
     ASSERT_EQ(c_data.get(c).cast<char>(), 'x');
-    ASSERT_EQ(prop, properties::prop_bool);
+    ASSERT_EQ(prop, props::prop_bool);
     ASSERT_EQ(c, 'x');
 }
 
-TEST_F(Meta, Unregister) {
-    ASSERT_FALSE(entt::unregister<float>());
-    ASSERT_TRUE(entt::unregister<double>());
-    ASSERT_TRUE(entt::unregister<char>());
-    ASSERT_TRUE(entt::unregister<properties>());
-    ASSERT_TRUE(entt::unregister<unsigned int>());
-    ASSERT_TRUE(entt::unregister<base_type>());
-    ASSERT_TRUE(entt::unregister<derived_type>());
-    ASSERT_TRUE(entt::unregister<empty_type>());
-    ASSERT_TRUE(entt::unregister<fat_type>());
-    ASSERT_TRUE(entt::unregister<data_type>());
-    ASSERT_TRUE(entt::unregister<func_type>());
-    ASSERT_TRUE(entt::unregister<setter_getter_type>());
-    ASSERT_TRUE(entt::unregister<an_abstract_type>());
-    ASSERT_TRUE(entt::unregister<another_abstract_type>());
-    ASSERT_TRUE(entt::unregister<concrete_type>());
-    ASSERT_FALSE(entt::unregister<double>());
+TEST_F(Meta, PropertiesAndCornerCases) {
+    auto type = entt::resolve<props>();
+
+    ASSERT_EQ(type.data("prop_bool"_hs).prop(props::prop_int).value().cast<int>(), 0);
+    ASSERT_EQ(type.data("prop_bool"_hs).prop(props::prop_value).value().cast<int>(), 3);
+
+    ASSERT_EQ(type.data("prop_int"_hs).prop(props::prop_bool).value().cast<bool>(), true);
+    ASSERT_EQ(type.data("prop_int"_hs).prop(props::prop_int).value().cast<int>(), 0);
+    ASSERT_EQ(type.data("prop_int"_hs).prop(props::prop_value).value().cast<int>(), 3);
+    ASSERT_TRUE(type.data("prop_int"_hs).prop(props::key_only));
+    ASSERT_FALSE(type.data("prop_int"_hs).prop(props::key_only).value());
+
+    ASSERT_EQ(type.data("prop_list"_hs).prop(props::prop_bool).value().cast<bool>(), false);
+    ASSERT_EQ(type.data("prop_list"_hs).prop(props::prop_int).value().cast<int>(), 0);
+    ASSERT_EQ(type.data("prop_list"_hs).prop(props::prop_value).value().cast<int>(), 3);
+    ASSERT_TRUE(type.data("prop_list"_hs).prop(props::key_only));
+    ASSERT_FALSE(type.data("prop_list"_hs).prop(props::key_only).value());
+}
+
+TEST_F(Meta, Reset) {
+    ASSERT_NE(*entt::internal::meta_context::global, nullptr);
+
+    entt::meta<char>().reset();
+    entt::meta<concrete_type>().reset();
+    entt::meta<setter_getter_type>().reset();
+    entt::meta<fat_type>().reset();
+    entt::meta<data_type>().reset();
+    entt::meta<func_type>().reset();
+    entt::meta<array_type>().reset();
+    entt::meta<double>().reset();
+    entt::meta<props>().reset();
+    entt::meta<base_type>().reset();
+    entt::meta<derived_type>().reset();
+    entt::meta<empty_type>().reset();
+    entt::meta<an_abstract_type>().reset();
+    entt::meta<another_abstract_type>().reset();
+    entt::meta<unsigned int>().reset();
 
     ASSERT_FALSE(entt::resolve("char"_hs));
     ASSERT_FALSE(entt::resolve("base"_hs));
@@ -1998,6 +1909,8 @@ TEST_F(Meta, Unregister) {
     ASSERT_FALSE(entt::resolve("another_abstract_type"_hs));
     ASSERT_FALSE(entt::resolve("concrete"_hs));
 
+    ASSERT_EQ(*entt::internal::meta_context::global, nullptr);
+
     Meta::SetUpAfterUnregistration();
     entt::meta_any any{42.};
 
@@ -2009,8 +1922,7 @@ TEST_F(Meta, Unregister) {
     ASSERT_TRUE(entt::resolve("my_type"_hs));
 
     entt::resolve<derived_type>().prop([](auto prop) {
-        ASSERT_TRUE(prop);
-        ASSERT_EQ(prop.key(), properties::prop_bool);
+        ASSERT_EQ(prop.key(), props::prop_bool);
         ASSERT_FALSE(prop.value().template cast<bool>());
     });
 
@@ -2022,4 +1934,19 @@ TEST_F(Meta, Unregister) {
 
     ASSERT_TRUE(entt::resolve("your_type"_hs).func("a_member_function"_hs));
     ASSERT_FALSE(entt::resolve("your_type"_hs).func("another_member_function"_hs));
+}
+
+TEST_F(Meta, ReRegistrationAfterReset) {
+    ASSERT_TRUE(entt::resolve<props>().data("prop_bool"_hs).prop(props::prop_int));
+    ASSERT_TRUE(entt::resolve<props>().data("prop_bool"_hs).prop(props::prop_value));
+
+    entt::meta<double>().reset();
+    entt::meta<props>().reset();
+    entt::meta<derived_type>().reset();
+    entt::meta<another_abstract_type>().reset();
+
+    Meta::SetUpAfterUnregistration();
+
+    ASSERT_TRUE(entt::resolve<props>().data("prop_bool"_hs).prop(props::prop_int));
+    ASSERT_TRUE(entt::resolve<props>().data("prop_bool"_hs).prop(props::prop_value));
 }

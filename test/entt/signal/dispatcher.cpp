@@ -7,8 +7,6 @@ struct an_event {};
 struct another_event {};
 struct one_more_event {};
 
-ENTT_NAMED_TYPE(an_event)
-
 struct receiver {
     static void forward(entt::dispatcher &dispatcher, const an_event &event) {
         dispatcher.enqueue(event);
@@ -44,11 +42,11 @@ TEST(Dispatcher, Functionalities) {
     ASSERT_EQ(receiver.cnt, 3);
 
     dispatcher.enqueue<an_event>();
-    dispatcher.discard<an_event>();
+    dispatcher.clear<an_event>();
     dispatcher.update();
 
     dispatcher.enqueue<an_event>();
-    dispatcher.discard();
+    dispatcher.clear();
     dispatcher.update();
 
     ASSERT_EQ(receiver.cnt, 3);

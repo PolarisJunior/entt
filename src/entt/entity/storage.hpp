@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <numeric>
 #include <utility>
 #include <vector>
 #include <cstddef>
@@ -38,9 +37,8 @@ namespace entt {
  * functions for that). Use `begin` and `end` instead.
  *
  * @warning
- * Empty types aren't explicitly instantiated. Temporary objects are returned in
- * place of the instances of the components and raw access isn't available for
- * them.
+ * Empty types aren't explicitly instantiated. Therefore, many of the functions
+ * normally available for non-empty types will not be available for empty ones.
  *
  * @sa sparse_set<Entity>
  *
@@ -48,19 +46,22 @@ namespace entt {
  * @tparam Type Type of objects assigned to the entities.
  */
 template<typename Entity, typename Type, typename = std::void_t<>>
-class basic_storage: public sparse_set<Entity> {
+class storage: public sparse_set<Entity> {
+    static_assert(std::is_move_constructible_v<Type>);
+    static_assert(std::is_move_assignable_v<Type>);
+
     using underlying_type = sparse_set<Entity>;
     using traits_type = entt_traits<std::underlying_type_t<Entity>>;
 
     template<bool Const>
-    class iterator {
-        friend class basic_storage<Entity, Type>;
+    class storage_iterator final {
+        friend class storage<Entity, Type>;
 
         using instance_type = std::conditional_t<Const, const std::vector<Type>, std::vector<Type>>;
         using index_type = typename traits_type::difference_type;
 
-        iterator(instance_type *ref, const index_type idx) ENTT_NOEXCEPT
-            : instances{ref}, index{idx}
+        storage_iterator(instance_type &ref, const index_type idx) ENTT_NOEXCEPT
+            : instances{&ref}, index{idx}
         {}
 
     public:
@@ -70,44 +71,45 @@ class basic_storage: public sparse_set<Entity> {
         using reference = std::conditional_t<Const, const value_type &, value_type &>;
         using iterator_category = std::random_access_iterator_tag;
 
-        iterator() ENTT_NOEXCEPT = default;
+        storage_iterator() ENTT_NOEXCEPT = default;
 
-        iterator & operator++() ENTT_NOEXCEPT {
+        storage_iterator & operator++() ENTT_NOEXCEPT {
             return --index, *this;
         }
 
-        iterator operator++(int) ENTT_NOEXCEPT {
-            iterator orig = *this;
-            return ++(*this), orig;
+        storage_iterator operator++(int) ENTT_NOEXCEPT {
+            storage_iterator orig = *this;
+            return operator++(), orig;
         }
 
-        iterator & operator--() ENTT_NOEXCEPT {
+        storage_iterator & operator--() ENTT_NOEXCEPT {
             return ++index, *this;
         }
 
-        iterator operator--(int) ENTT_NOEXCEPT {
-            iterator orig = *this;
-            return --(*this), orig;
+        storage_iterator operator--(int) ENTT_NOEXCEPT {
+            storage_iterator orig = *this;
+            return operator--(), orig;
         }
 
-        iterator & operator+=(const difference_type value) ENTT_NOEXCEPT {
+        storage_iterator & operator+=(const difference_type value) ENTT_NOEXCEPT {
             index -= value;
             return *this;
         }
 
-        iterator operator+(const difference_type value) const ENTT_NOEXCEPT {
-            return iterator{instances, index-value};
+        storage_iterator operator+(const difference_type value) const ENTT_NOEXCEPT {
+            storage_iterator copy = *this;
+            return (copy += value);
         }
 
-        iterator & operator-=(const difference_type value) ENTT_NOEXCEPT {
+        storage_iterator & operator-=(const difference_type value) ENTT_NOEXCEPT {
             return (*this += -value);
         }
 
-        iterator operator-(const difference_type value) const ENTT_NOEXCEPT {
+        storage_iterator operator-(const difference_type value) const ENTT_NOEXCEPT {
             return (*this + -value);
         }
 
-        difference_type operator-(const iterator &other) const ENTT_NOEXCEPT {
+        difference_type operator-(const storage_iterator &other) const ENTT_NOEXCEPT {
             return other.index - index;
         }
 
@@ -116,27 +118,27 @@ class basic_storage: public sparse_set<Entity> {
             return (*instances)[pos];
         }
 
-        bool operator==(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator==(const storage_iterator &other) const ENTT_NOEXCEPT {
             return other.index == index;
         }
 
-        bool operator!=(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator!=(const storage_iterator &other) const ENTT_NOEXCEPT {
             return !(*this == other);
         }
 
-        bool operator<(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator<(const storage_iterator &other) const ENTT_NOEXCEPT {
             return index > other.index;
         }
 
-        bool operator>(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator>(const storage_iterator &other) const ENTT_NOEXCEPT {
             return index < other.index;
         }
 
-        bool operator<=(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator<=(const storage_iterator &other) const ENTT_NOEXCEPT {
             return !(*this > other);
         }
 
-        bool operator>=(const iterator &other) const ENTT_NOEXCEPT {
+        bool operator>=(const storage_iterator &other) const ENTT_NOEXCEPT {
             return !(*this < other);
         }
 
@@ -162,9 +164,9 @@ public:
     /*! @brief Unsigned integer type. */
     using size_type = std::size_t;
     /*! @brief Random access iterator type. */
-    using iterator_type = iterator<false>;
+    using iterator = storage_iterator<false>;
     /*! @brief Constant random access iterator type. */
-    using const_iterator_type = iterator<true>;
+    using const_iterator = storage_iterator<true>;
 
     /**
      * @brief Increases the capacity of a storage.
@@ -221,20 +223,20 @@ public:
      *
      * @return An iterator to the first instance of the given type.
      */
-    const_iterator_type cbegin() const ENTT_NOEXCEPT {
+    const_iterator cbegin() const ENTT_NOEXCEPT {
         const typename traits_type::difference_type pos = underlying_type::size();
-        return const_iterator_type{&instances, pos};
+        return const_iterator{instances, pos};
     }
 
     /*! @copydoc cbegin */
-    const_iterator_type begin() const ENTT_NOEXCEPT {
+    const_iterator begin() const ENTT_NOEXCEPT {
         return cbegin();
     }
 
     /*! @copydoc begin */
-    iterator_type begin() ENTT_NOEXCEPT {
+    iterator begin() ENTT_NOEXCEPT {
         const typename traits_type::difference_type pos = underlying_type::size();
-        return iterator_type{&instances, pos};
+        return iterator{instances, pos};
     }
 
     /**
@@ -251,18 +253,18 @@ public:
      * @return An iterator to the element following the last instance of the
      * given type.
      */
-    const_iterator_type cend() const ENTT_NOEXCEPT {
-        return const_iterator_type{&instances, {}};
+    const_iterator cend() const ENTT_NOEXCEPT {
+        return const_iterator{instances, {}};
     }
 
     /*! @copydoc cend */
-    const_iterator_type end() const ENTT_NOEXCEPT {
+    const_iterator end() const ENTT_NOEXCEPT {
         return cend();
     }
 
     /*! @copydoc end */
-    iterator_type end() ENTT_NOEXCEPT {
-        return iterator_type{&instances, {}};
+    iterator end() ENTT_NOEXCEPT {
+        return iterator{instances, {}};
     }
 
     /**
@@ -277,12 +279,12 @@ public:
      * @param entt A valid entity identifier.
      * @return The object associated with the entity.
      */
-    const object_type & get(const entity_type entt) const ENTT_NOEXCEPT {
+    const object_type & get(const entity_type entt) const {
         return instances[underlying_type::index(entt)];
     }
 
     /*! @copydoc get */
-    object_type & get(const entity_type entt) ENTT_NOEXCEPT {
+    object_type & get(const entity_type entt) {
         return const_cast<object_type &>(std::as_const(*this).get(entt));
     }
 
@@ -291,12 +293,12 @@ public:
      * @param entt A valid entity identifier.
      * @return The object associated with the entity, if any.
      */
-    const object_type * try_get(const entity_type entt) const ENTT_NOEXCEPT {
-        return underlying_type::has(entt) ? (instances.data() + underlying_type::index(entt)) : nullptr;
+    const object_type * try_get(const entity_type entt) const {
+        return underlying_type::contains(entt) ? (instances.data() + underlying_type::index(entt)) : nullptr;
     }
 
     /*! @copydoc try_get */
-    object_type * try_get(const entity_type entt) ENTT_NOEXCEPT {
+    object_type * try_get(const entity_type entt) {
         return const_cast<object_type *>(std::as_const(*this).try_get(entt));
     }
 
@@ -316,27 +318,29 @@ public:
      * @tparam Args Types of arguments to use to construct the object.
      * @param entt A valid entity identifier.
      * @param args Parameters to use to construct an object for the entity.
-     * @return The object associated with the entity.
      */
     template<typename... Args>
-    object_type & construct(const entity_type entt, Args &&... args) {
+    void emplace(const entity_type entt, Args &&... args) {
         if constexpr(std::is_aggregate_v<object_type>) {
-            instances.emplace_back(Type{std::forward<Args>(args)...});
+            instances.push_back(Type{std::forward<Args>(args)...});
         } else {
             instances.emplace_back(std::forward<Args>(args)...);
         }
 
         // entity goes after component in case constructor throws
-        underlying_type::construct(entt);
-        return instances.back();
+        underlying_type::emplace(entt);
+    }
+
+    /*! @copydoc emplace */
+    template<typename... Args>
+    [[deprecated("use ::emplace instead")]]
+    void construct(const entity_type entt, Args &&... args) {
+        emplace(entt, std::forward<Args>(args)...);
     }
 
     /**
-     * @brief Assigns one or more entities to a storage and default constructs
-     * or copy constructs their objects.
-     *
-     * The object type must be at least move and default insertable if no
-     * arguments are provided, move and copy insertable otherwise.
+     * @brief Assigns one or more entities to a storage and constructs their
+     * objects from a given instance.
      *
      * @warning
      * Attempting to assign an entity that already belongs to the storage
@@ -344,25 +348,52 @@ public:
      * An assertion will abort the execution at runtime in debug mode if the
      * storage already contains the given entity.
      *
-     * @tparam It Type of forward iterator.
-     * @tparam Args Types of arguments to use to construct the object.
+     * @tparam It Type of input iterator.
      * @param first An iterator to the first element of the range of entities.
      * @param last An iterator past the last element of the range of entities.
-     * @param args Parameters to use to construct an object for the entities.
-     * @return An iterator to the list of instances just created and sorted the
-     * same of the entities.
+     * @param value An instance of the object to construct.
      */
-    template<typename It, typename... Args>
-    iterator_type batch(It first, It last, Args &&... args) {
-        if constexpr(sizeof...(Args) == 0) {
-            instances.resize(instances.size() + std::distance(first, last));
-        } else {
-            instances.resize(instances.size() + std::distance(first, last), Type{std::forward<Args>(args)...});
-        }
+    template<typename It>
+    void insert(It first, It last, const object_type &value = {}) {
+        instances.insert(instances.end(), std::distance(first, last), value);
+        // entities go after components in case constructors throw
+        underlying_type::insert(first, last);
+    }
 
-        // entity goes after component in case constructor throws
-        underlying_type::batch(first, last);
-        return begin();
+    /*! @copydoc insert */
+    template<typename It>
+    [[deprecated("use ::insert instead")]]
+    std::enable_if_t<std::is_same_v<typename std::iterator_traits<It>::value_type, entity_type>, void>
+    construct(It first, It last, const object_type &value = {}) {
+        insert(std::move(first), std::move(last), value);
+    }
+
+    /**
+     * @brief Assigns one or more entities to a storage and constructs their
+     * objects from a given range.
+     *
+     * @sa construct
+     *
+     * @tparam EIt Type of input iterator.
+     * @tparam CIt Type of input iterator.
+     * @param first An iterator to the first element of the range of entities.
+     * @param last An iterator past the last element of the range of entities.
+     * @param from An iterator to the first element of the range of objects.
+     * @param to An iterator past the last element of the range of objects.
+     */
+    template<typename EIt, typename CIt>
+    void insert(EIt first, EIt last, CIt from, CIt to) {
+        instances.insert(instances.end(), from, to);
+        // entities go after components in case constructors throw
+        underlying_type::insert(first, last);
+    }
+
+    /*! @copydoc insert */
+    template<typename EIt, typename CIt>
+    [[deprecated("use ::insert instead")]]
+    std::enable_if_t<std::is_same_v<typename std::iterator_traits<EIt>::value_type, entity_type>, void>
+    construct(EIt first, EIt last, CIt value) {
+        insert(std::move(first), std::move(last), std::move(value));
     }
 
     /**
@@ -376,11 +407,17 @@ public:
      *
      * @param entt A valid entity identifier.
      */
-    void destroy(const entity_type entt) {
+    void erase(const entity_type entt) {
         auto other = std::move(instances.back());
         instances[underlying_type::index(entt)] = std::move(other);
         instances.pop_back();
-        underlying_type::destroy(entt);
+        underlying_type::erase(entt);
+    }
+
+    /*! @copydoc erase */
+    [[deprecated("use ::erase instead")]]
+    void destroy(const entity_type entt) {
+        erase(entt);
     }
 
     /**
@@ -395,7 +432,7 @@ public:
      * @param lhs A valid entity identifier.
      * @param rhs A valid entity identifier.
      */
-    void swap(const entity_type lhs, const entity_type rhs) ENTT_NOEXCEPT override {
+    void swap(const entity_type lhs, const entity_type rhs) override {
         std::swap(instances[underlying_type::index(lhs)], instances[underlying_type::index(rhs)]);
         underlying_type::swap(lhs, rhs);
     }
@@ -431,6 +468,11 @@ public:
      * either `data` or `raw` gives no guarantees on the order, even though
      * `sort` has been invoked.
      *
+     * @warning
+     * Empty types are never instantiated. Therefore, only comparison function
+     * objects that require to return entities rather than components are
+     * accepted.
+     *
      * @tparam Compare Type of comparison function object.
      * @tparam Sort Type of sort function object.
      * @tparam Args Types of arguments to forward to the sort function object.
@@ -441,7 +483,7 @@ public:
      * @param args Arguments to forward to the sort function object, if any.
      */
     template<typename Compare, typename Sort = std_sort, typename... Args>
-    void sort(iterator_type first, iterator_type last, Compare compare, Sort algo = Sort{}, Args &&... args) {
+    void sort(iterator first, iterator last, Compare compare, Sort algo = Sort{}, Args &&... args) {
         ENTT_ASSERT(!(last < first));
         ENTT_ASSERT(!(last > end()));
 
@@ -453,8 +495,6 @@ public:
         };
 
         if constexpr(std::is_invocable_v<Compare, const object_type &, const object_type &>) {
-            static_assert(!std::is_empty_v<object_type>);
-
             underlying_type::arrange(from, to, std::move(apply), [this, compare = std::move(compare)](const auto lhs, const auto rhs) {
                 return compare(std::as_const(instances[underlying_type::index(lhs)]), std::as_const(instances[underlying_type::index(rhs)]));
             }, std::move(algo), std::forward<Args>(args)...);
@@ -463,9 +503,9 @@ public:
         }
     }
 
-    /*! @brief Resets a storage. */
-    void reset() {
-        underlying_type::reset();
+    /*! @brief Clears a storage. */
+    void clear() {
+        underlying_type::clear();
         instances.clear();
     }
 
@@ -474,108 +514,11 @@ private:
 };
 
 
-/*! @copydoc basic_storage */
+/*! @copydoc storage */
 template<typename Entity, typename Type>
-class basic_storage<Entity, Type, std::enable_if_t<std::is_empty_v<Type>>>: public sparse_set<Entity> {
+class storage<Entity, Type, std::enable_if_t<ENTT_IS_EMPTY(Type)>>: public sparse_set<Entity> {
     using traits_type = entt_traits<std::underlying_type_t<Entity>>;
     using underlying_type = sparse_set<Entity>;
-
-    class iterator {
-        friend class basic_storage<Entity, Type>;
-
-        using index_type = typename traits_type::difference_type;
-
-        iterator(const index_type idx) ENTT_NOEXCEPT
-            : index{idx}
-        {}
-
-    public:
-        using difference_type = index_type;
-        using value_type = Type;
-        using pointer = const value_type *;
-        using reference = value_type;
-        using iterator_category = std::input_iterator_tag;
-
-        iterator() ENTT_NOEXCEPT = default;
-
-        iterator & operator++() ENTT_NOEXCEPT {
-            return --index, *this;
-        }
-
-        iterator operator++(int) ENTT_NOEXCEPT {
-            iterator orig = *this;
-            return ++(*this), orig;
-        }
-
-        iterator & operator--() ENTT_NOEXCEPT {
-            return ++index, *this;
-        }
-
-        iterator operator--(int) ENTT_NOEXCEPT {
-            iterator orig = *this;
-            return --(*this), orig;
-        }
-
-        iterator & operator+=(const difference_type value) ENTT_NOEXCEPT {
-            index -= value;
-            return *this;
-        }
-
-        iterator operator+(const difference_type value) const ENTT_NOEXCEPT {
-            return iterator{index-value};
-        }
-
-        iterator & operator-=(const difference_type value) ENTT_NOEXCEPT {
-            return (*this += -value);
-        }
-
-        iterator operator-(const difference_type value) const ENTT_NOEXCEPT {
-            return (*this + -value);
-        }
-
-        difference_type operator-(const iterator &other) const ENTT_NOEXCEPT {
-            return other.index - index;
-        }
-
-        reference operator[](const difference_type) const ENTT_NOEXCEPT {
-            return {};
-        }
-
-        bool operator==(const iterator &other) const ENTT_NOEXCEPT {
-            return other.index == index;
-        }
-
-        bool operator!=(const iterator &other) const ENTT_NOEXCEPT {
-            return !(*this == other);
-        }
-
-        bool operator<(const iterator &other) const ENTT_NOEXCEPT {
-            return index > other.index;
-        }
-
-        bool operator>(const iterator &other) const ENTT_NOEXCEPT {
-            return index < other.index;
-        }
-
-        bool operator<=(const iterator &other) const ENTT_NOEXCEPT {
-            return !(*this > other);
-        }
-
-        bool operator>=(const iterator &other) const ENTT_NOEXCEPT {
-            return !(*this < other);
-        }
-
-        pointer operator->() const ENTT_NOEXCEPT {
-            return nullptr;
-        }
-
-        reference operator*() const ENTT_NOEXCEPT {
-            return {};
-        }
-
-    private:
-        index_type index;
-    };
 
 public:
     /*! @brief Type of the objects associated with the entities. */
@@ -584,79 +527,35 @@ public:
     using entity_type = Entity;
     /*! @brief Unsigned integer type. */
     using size_type = std::size_t;
-    /*! @brief Random access iterator type. */
-    using iterator_type = iterator;
 
     /**
-     * @brief Returns an iterator to the beginning.
-     *
-     * The returned iterator points to the first instance of the given type. If
-     * the storage is empty, the returned iterator will be equal to `end()`.
-     *
-     * @note
-     * Input iterators stay true to the order imposed by a call to either `sort`
-     * or `respect`.
-     *
-     * @return An iterator to the first instance of the given type.
-     */
-    iterator_type cbegin() const ENTT_NOEXCEPT {
-        const typename traits_type::difference_type pos = underlying_type::size();
-        return iterator_type{pos};
-    }
-
-    /*! @copydoc cbegin */
-    iterator_type begin() const ENTT_NOEXCEPT {
-        return cbegin();
-    }
-
-    /**
-     * @brief Returns an iterator to the end.
-     *
-     * The returned iterator points to the element following the last instance
-     * of the given type. Attempting to dereference the returned iterator
-     * results in undefined behavior.
-     *
-     * @note
-     * Input iterators stay true to the order imposed by a call to either `sort`
-     * or `respect`.
-     *
-     * @return An iterator to the element following the last instance of the
-     * given type.
-     */
-    iterator_type cend() const ENTT_NOEXCEPT {
-        return iterator_type{};
-    }
-
-    /*! @copydoc cend */
-    iterator_type end() const ENTT_NOEXCEPT {
-        return cend();
-    }
-
-    /**
-     * @brief Returns the object associated with an entity.
-     *
-     * @note
-     * Empty types aren't explicitly instantiated. Therefore, this function
-     * always returns a temporary object.
+     * @brief Assigns an entity to a storage and constructs its object.
      *
      * @warning
-     * Attempting to use an entity that doesn't belong to the storage results in
-     * undefined behavior.<br/>
+     * Attempting to use an entity that already belongs to the storage results
+     * in undefined behavior.<br/>
      * An assertion will abort the execution at runtime in debug mode if the
-     * storage doesn't contain the given entity.
+     * storage already contains the given entity.
      *
+     * @tparam Args Types of arguments to use to construct the object.
      * @param entt A valid entity identifier.
-     * @return The object associated with the entity.
+     * @param args Parameters to use to construct an object for the entity.
      */
-    object_type get([[maybe_unused]] const entity_type entt) const ENTT_NOEXCEPT {
-        ENTT_ASSERT(underlying_type::has(entt));
-        return {};
+    template<typename... Args>
+    void emplace(const entity_type entt, Args &&... args) {
+        [[maybe_unused]] object_type instance{std::forward<Args>(args)...};
+        underlying_type::emplace(entt);
+    }
+
+    /*! @copydoc emplace */
+    template<typename... Args>
+    [[deprecated("use ::emplace instead")]]
+    void construct(const entity_type entt, Args &&... args) {
+        emplace(entt, std::forward<Args>(args)...);
     }
 
     /**
      * @brief Assigns one or more entities to a storage.
-     *
-     * The object type must be at least default constructible.
      *
      * @warning
      * Attempting to assign an entity that already belongs to the storage
@@ -664,25 +563,29 @@ public:
      * An assertion will abort the execution at runtime in debug mode if the
      * storage already contains the given entity.
      *
-     * @tparam It Type of forward iterator.
+     * @tparam It Type of input iterator.
      * @param first An iterator to the first element of the range of entities.
      * @param last An iterator past the last element of the range of entities.
-     * @return An iterator to the list of instances just created and sorted the
-     * same of the entities.
      */
     template<typename It>
-    iterator_type batch(It first, It last, const object_type & = {}) {
-        underlying_type::batch(first, last);
-        return begin();
+    void insert(It first, It last, const object_type & = {}) {
+        underlying_type::insert(first, last);
+    }
+
+    /**
+     * @copydoc insert
+     * @param value An instance of the object to construct.
+     */
+    template<typename It>
+    [[deprecated("use ::insert instead")]]
+    std::enable_if_t<std::is_same_v<typename std::iterator_traits<It>::value_type, entity_type>, void>
+    construct(It first, It last, const object_type &value = {}) {
+        insert(std::move(first), std::move(last), value);
     }
 };
-
-/*! @copydoc basic_storage */
-template<typename Entity, typename Type>
-struct storage: basic_storage<Entity, Type> {};
 
 
 }
 
 
-#endif // ENTT_ENTITY_STORAGE_HPP
+#endif

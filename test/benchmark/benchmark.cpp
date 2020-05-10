@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iterator>
 #include <gtest/gtest.h>
+#include <entt/core/type_info.hpp>
 #include <entt/entity/registry.hpp>
 
 struct position {
@@ -44,9 +45,9 @@ void pathological(Func func) {
 
     for(auto i = 0; i < 10; ++i) {
         registry.each([i = 0, &registry](const auto entity) mutable {
-            if(!(++i % 7)) { registry.reset<position>(entity); }
-            if(!(++i % 11)) { registry.reset<velocity>(entity); }
-            if(!(++i % 13)) { registry.reset<comp<0>>(entity); }
+            if(!(++i % 7)) { registry.remove_if_exists<position>(entity); }
+            if(!(++i % 11)) { registry.remove_if_exists<velocity>(entity); }
+            if(!(++i % 13)) { registry.remove_if_exists<comp<0>>(entity); }
             if(!(++i % 17)) { registry.destroy(entity); }
         });
 
@@ -63,10 +64,10 @@ void pathological(Func func) {
     });
 }
 
-TEST(Benchmark, Construct) {
+TEST(Benchmark, Create) {
     entt::registry registry;
 
-    std::cout << "Constructing 1000000 entities" << std::endl;
+    std::cout << "Creating 1000000 entities" << std::endl;
 
     timer timer;
 
@@ -77,22 +78,22 @@ TEST(Benchmark, Construct) {
     timer.elapsed();
 }
 
-TEST(Benchmark, ConstructMany) {
+TEST(Benchmark, CreateMany) {
     entt::registry registry;
     std::vector<entt::entity> entities(1000000);
 
-    std::cout << "Constructing 1000000 entities at once" << std::endl;
+    std::cout << "Creating 1000000 entities at once" << std::endl;
 
     timer timer;
     registry.create(entities.begin(), entities.end());
     timer.elapsed();
 }
 
-TEST(Benchmark, ConstructManyAndAssignComponents) {
+TEST(Benchmark, CreateManyAndAssignComponents) {
     entt::registry registry;
     std::vector<entt::entity> entities(1000000);
 
-    std::cout << "Constructing 1000000 entities at once and assign components" << std::endl;
+    std::cout << "Creating 1000000 entities at once and assign components" << std::endl;
 
     timer timer;
 
@@ -106,14 +107,16 @@ TEST(Benchmark, ConstructManyAndAssignComponents) {
     timer.elapsed();
 }
 
-TEST(Benchmark, ConstructManyWithComponents) {
+TEST(Benchmark, CreateManyWithComponents) {
     entt::registry registry;
     std::vector<entt::entity> entities(1000000);
 
-    std::cout << "Constructing 1000000 entities at once with components" << std::endl;
+    std::cout << "Creating 1000000 entities at once with components" << std::endl;
 
     timer timer;
-    registry.create<position, velocity>(entities.begin(), entities.end());
+    registry.create(entities.begin(), entities.end());
+    registry.assign<position>(entities.begin(), entities.end());
+    registry.assign<velocity>(entities.begin(), entities.end());
     timer.elapsed();
 }
 
@@ -167,7 +170,7 @@ TEST(Benchmark, IterateSingleComponentRuntime1M) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>() };
+        ENTT_ID_TYPE types[] = { entt::type_info<position>::id() };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -332,7 +335,10 @@ TEST(Benchmark, IterateTwoComponentsRuntime1M) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -360,7 +366,10 @@ TEST(Benchmark, IterateTwoComponentsRuntime1MHalf) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -388,7 +397,10 @@ TEST(Benchmark, IterateTwoComponentsRuntime1MOne) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -561,7 +573,11 @@ TEST(Benchmark, IterateThreeComponentsRuntime1M) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>(), registry.type<comp<0>>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -591,7 +607,11 @@ TEST(Benchmark, IterateThreeComponentsRuntime1MHalf) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>(), registry.type<comp<0>>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -621,7 +641,11 @@ TEST(Benchmark, IterateThreeComponentsRuntime1MOne) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = { registry.type<position>(), registry.type<velocity>(), registry.type<comp<0>>() };
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id()
+        };
 
         timer timer;
         registry.runtime_view(std::begin(types), std::end(types)).each(func);
@@ -835,12 +859,12 @@ TEST(Benchmark, IterateFiveComponentsRuntime1M) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = {
-            registry.type<position>(),
-            registry.type<velocity>(),
-            registry.type<comp<0>>(),
-            registry.type<comp<1>>(),
-            registry.type<comp<2>>()
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id(),
+            entt::type_info<comp<1>>::id(),
+            entt::type_info<comp<2>>::id()
         };
 
         timer timer;
@@ -875,12 +899,12 @@ TEST(Benchmark, IterateFiveComponentsRuntime1MHalf) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = {
-            registry.type<position>(),
-            registry.type<velocity>(),
-            registry.type<comp<0>>(),
-            registry.type<comp<1>>(),
-            registry.type<comp<2>>()
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id(),
+            entt::type_info<comp<1>>::id(),
+            entt::type_info<comp<2>>::id()
         };
 
         timer timer;
@@ -915,12 +939,12 @@ TEST(Benchmark, IterateFiveComponentsRuntime1MOne) {
     }
 
     auto test = [&registry](auto func) {
-        entt::component types[] = {
-            registry.type<position>(),
-            registry.type<velocity>(),
-            registry.type<comp<0>>(),
-            registry.type<comp<1>>(),
-            registry.type<comp<2>>()
+        ENTT_ID_TYPE types[] = {
+            entt::type_info<position>::id(),
+            entt::type_info<velocity>::id(),
+            entt::type_info<comp<0>>::id(),
+            entt::type_info<comp<1>>::id(),
+            entt::type_info<comp<2>>::id()
         };
 
         timer timer;

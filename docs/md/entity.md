@@ -15,16 +15,16 @@
 * [The Registry, the Entity and the Component](#the-registry-the-entity-and-the-component)
   * [Observe changes](#observe-changes)
     * [They call me Reactive System](#they-call-me-reactive-system)
-  * [Runtime components](#runtime-components)
-    * [A journey through a plugin](#a-journey-through-a-plugin)
   * [Sorting: is it possible?](#sorting-is-it-possible)
   * [Helpers](#helpers)
     * [Null entity](#null-entity)
-    * [Stomp and spawn](#stomp-and-spawn)
     * [Dependencies](#dependencies)
-    * [Tags](#tags)
+    * [Invoke](#invoke)
     * [Actor](#actor)
     * [Context variables](#context-variables)
+  * [Meet the runtime](#meet-the-runtime)
+    * [Cloning a registry](#cloning-a-registry)
+    * [Stamping an entity](#stamping-an-entity)
   * [Snapshot: complete vs continuous](#snapshot-complete-vs-continuous)
     * [Snapshot loader](#snapshot-loader)
     * [Continuous loader](#continuous-loader)
@@ -62,8 +62,7 @@ used mostly in game development.
 ## A bitset-free entity-component system
 
 `EnTT` offers a _bitset-free_ entity-component system that doesn't require users
-to specify the set of components neither at compile-time nor at runtime before
-being able to use the library itself.<br/>
+to specify the set of components neither at compile-time nor at runtime.<br/>
 This is why users can instantiate the core class simply like:
 
 ```cpp
@@ -76,9 +75,8 @@ In place of its more annoying and error-prone counterpart:
 entt::registry<comp_0, comp_1, ..., comp_n> registry;
 ```
 
-Furthermore, there is no need to indicate to the library in any way that a type
-of component exists and will be used sooner or later. When the time comes, users
-can just use it and that's all.
+Furthermore, it isn't necessary to announce the existence of a component type.
+When the time comes, just use it and that's all.
 
 ## Pay per use
 
@@ -95,10 +93,7 @@ perfomance sometimes and I've always wondered why this kind of tools do not
 leave me the choice.<br/>
 `EnTT` follows a completely different approach. It gets the best out from the
 basic data structures and gives users the possibility to pay more for higher
-performance where needed.<br/>
-The disadvantage of this approach is that users need to know the systems they
-are working on and the tools they are using. Otherwise, the risk to ruin the
-performance along critical paths is high.
+performance where needed.
 
 So far, this choice has proven to be a good one and I really hope it can be for
 many others besides me.
@@ -109,13 +104,11 @@ many others besides me.
 directly access all the instances of a given component type `T`.<br/>
 This was a guideline and a design decision that influenced many choices, for
 better and for worse. I cannot say whether it will be useful or not to the
-reader, but it's worth to mention it, because it's one of the corner stones of
+reader, but it's worth to mention it since it's one of the corner stones of
 this library.
 
-Many of the tools described below, from the registry to the views and up to the
-groups give the possibility to get this information and have been designed
-around this need, which was and remains one of my main requirements during the
-development.<br/>
+Many of the tools described below give the possibility to get this information
+and have been designed around this need.<br/>
 The rest is experimentation and the desire to invent something new, hoping to
 have succeeded.
 
@@ -127,37 +120,25 @@ all systems can be free functions and there is no need to define them as classes
 This is possible because the main class with which the users will work provides
 all what is needed to act as the sole _source of truth_ of an application.
 
-To be honest, this point became part of the design principles at a later date,
-but has also become one of the cornerstones of the library to date, as stateless
-systems are widely used and appreciated in general.
-
 # Vademecum
 
 The registry to store, the views and the groups to iterate. That's all.
 
-An entity (the _E_ of an _ECS_) is an opaque identifier that users should just
-use as-is and store around if needed. Do not try to inspect an entity
-identifier, its format can change in future and a registry offers all the
-functionalities to query them out-of-the-box. The underlying type of an entity
-(either `std::uint16_t`, `std::uint32_t` or `std::uint64_t`) can be specified
-when defining a registry. In fact, an `entt::registry` is nothing more than an
-alias for `entt::basic_registry<entt::entity>` and `entt::entity` is a distinct
-type that implements the concept of _entity identifier_.<br/>
-Components (the _C_ of an _ECS_) should be plain old data structures or more
-complex and movable data structures with a proper constructor. Actually, the
-sole requirement of a component type is that it must be both move constructible
-and move assignable. They are list initialized by using the parameters provided
-to construct the component itself. No need to register components or their types
+An entity (the _E_ of an _ECS_) is an opaque identifier that users should use
+as-is. Inspecting an identifier isn't recommended since its format can change in
+future and a registry has all the functionalities to query them out-of-the-box.
+The type `entt::entity` implements the concept of _entity identifier_.<br/>
+Components (the _C_ of an _ECS_) must be both move constructible and move
+assignable. They are list initialized by using the parameters provided to
+construct the component itself. No need to register components or their types
 neither with the registry nor with the entity-component system at all.<br/>
-Systems (the _S_ of an _ECS_) are just plain functions, functors, lambdas or
-whatever users want. They can accept a registry, a view or a group of any type
-and use them the way they prefer. No need to register systems or their types
-neither with the registry nor with the entity-component system at all.
+Systems (the _S_ of an _ECS_) can be plain functions, functors, lambdas and so
+on. It's not required to announce them in any case and have no requirements.
 
-The following sections will explain in short how to use the entity-component
-system, the core part of the whole library.<br/>
-In fact, the project is composed of many other classes in addition to those
-describe below. For more details, please refer to the inline documentation.
+The following sections explain in short how to use the entity-component system,
+the core part of the whole library.<br/>
+The project is composed of many other classes in addition to those describe
+below. For more details, please refer to the inline documentation.
 
 # The Registry, the Entity and the Component
 
@@ -165,11 +146,10 @@ A registry can store and manage entities, as well as create views and groups to
 iterate the underlying data structures.<br/>
 The class template `basic_registry` lets users decide what's the preferred type
 to represent an entity. Because `std::uint32_t` is large enough for almost all
-the cases, there exists also the type `entt::entity` for it, as well as the
-alias `entt::registry` for `entt::basic_registry<entt::entity>`.
+the cases, there exists also the type `entt::entity` for it and the alias
+`entt::registry` for `entt::basic_registry<entt::entity>`.
 
-Entities are represented by _entity identifiers_. An entity identifier is an
-opaque type that users should not inspect or modify in any way. It carries
+Entities are represented by _entity identifiers_. An entity identifier carries
 information about the entity itself and its version.<br/>
 User defined identifiers can be introduced by means of the `ENTT_OPAQUE_TYPE`
 macro if needed.
@@ -184,9 +164,9 @@ auto entity = registry.create();
 registry.destroy(entity);
 ```
 
-There exists also an overload of the `create` and `destroy` member functions
-that accepts two iterators, that is a range to assign or to destroy. It can be
-used to create or destroy multiple entities at once:
+The `create` member function accepts also a hint and has an overload that gets
+two iterators and can be used to generate multiple entities at once efficiently.
+Similarly, the `destroy` member function works also with a range of entities:
 
 ```cpp
 // destroys all the entities in a range
@@ -194,17 +174,11 @@ auto view = registry.view<a_component, another_component>();
 registry.destroy(view.begin(), view.end());
 ```
 
-In both cases, the `create` member function accepts also a list of default
-constructible component types to assign to the entities before to return. It's a
-faster alternative to the creation and subsequent assignment of components in
-separate steps.
-
 When an entity is destroyed, the registry can freely reuse it internally with a
 slightly different identifier. In particular, the version of an entity is
-increased each and every time it's discarded.<br/>
-In case entity identifiers are stored around, the registry offers all the
-functionalities required to test them and to get out of them the information
-they carry:
+increased after destruction (unless the overload that forces a version is used
+instead of the default one).<br/>
+Users can probe an identifier to know the information it carries:
 
 ```cpp
 // returns true if the entity is still valid, false otherwise
@@ -217,104 +191,114 @@ auto version = registry.version(entity);
 auto curr = registry.current(entity);
 ```
 
-Components can be assigned to or removed from entities at any time with a few
-calls to member functions of the registry. As for the entities, the registry
-offers also a set of functionalities users can use to work with the components.
+Components can be assigned to or removed from entities at any time. As for the
+entities, the registry offers a set of functions to use to work with components.
 
-The `assign` member function template creates, initializes and assigns to an
-entity the given component. It accepts a variable number of arguments to
+The `emplace` member function template creates, initializes and assigns to an
+entity the given component. It accepts a variable number of arguments to use to
 construct the component itself if present:
 
 ```cpp
-registry.assign<position>(entity, 0., 0.);
+registry.emplace<position>(entity, 0., 0.);
 
 // ...
 
-auto &velocity = registry.assign<velocity>(entity);
+auto &velocity = registry.emplace<velocity>(entity);
 vel.dx = 0.;
 vel.dy = 0.;
 ```
 
-If an entity already has the given component, the `replace` member function
-template can be used to replace it:
+Similarly, `insert` does it for multiple entities and accepts a range rather
+than a single entity in order to:
+
+* Assign the same component to all entities at once when a type is specified as
+  a template parameter or an instance is passed as an argument:
+
+  ```cpp
+  // default initialized type assigned by copy to all entities
+  registry.insert<position>(first, last);
+
+  // user-defined instance assigned by copy to all entities
+  registry.insert(from, to, position{0., 0.});
+  ```
+
+* Assign a range of components to the entities when a range is provided (the
+  length of the range of components must be the same of that of entities):
+
+  ```cpp
+  // first and last specify the range of entities, instances points to the first element of the range of components
+  registry.insert<position>(first, last, instances);
+  ```
+
+If an entity already has the given component, the `replace` and `patch` member
+function templates can be used to update it:
 
 ```cpp
+// replaces the component in-place
+registry.patch<position>(entity, [](auto &pos) { pos.x = pos.y = 0.; });
+
+// constructs a new instance from a list of arguments and replaces the component
 registry.replace<position>(entity, 0., 0.);
-
-// ...
-
-auto &velocity = registry.replace<velocity>(entity);
-vel.dx = 0.;
-vel.dy = 0.;
 ```
 
-In case users want to assign a component to an entity, but it's unknown whether
-the entity already has it or not, `assign_or_replace` does the work in a single
-call (there is a performance penalty to pay for this mainly due to the fact that
-it has to check if the entity already has the given component or not):
+When it's unknown whether an entity already owns an instance of a component,
+`emplace_or_replace` is the function to use instead:
 
 ```cpp
-registry.assign_or_replace<position>(entity, 0., 0.);
-
-// ...
-
-auto &velocity = registry.assign_or_replace<velocity>(entity);
-vel.dx = 0.;
-vel.dy = 0.;
+registry.emplace_or_replace<position>(entity, 0., 0.);
 ```
 
-Note that `assign_or_replace` is a slightly faster alternative for the following
-`if/else` statement and nothing more:
+This is a slightly faster alternative for the following snippet:
 
 ```cpp
-if(registry.has<comp>(entity)) {
-    registry.replace<comp>(entity, arg1, argN);
+if(registry.has<velocity>(entity)) {
+    registry.replace<velocity>(entity, 0., 0.);
 } else {
-    registry.assign<comp>(entity, arg1, argN);
+    registry.emplace<velocity>(entity, 0., 0.);
 }
 ```
 
-As already shown, if in doubt about whether or not an entity has one or more
-components, the `has` member function template may be useful:
+The `has` and `any` member functions may also be useful if in doubt about
+whether or not an entity has all the components in a set or any of them:
 
 ```cpp
-bool b = registry.has<position, velocity>(entity);
+// true if entity has all the given components
+bool all = registry.has<position, velocity>(entity);
+
+// true if entity has at least one of the given components
+bool any = registry.any<position, velocity>(entity);
 ```
 
-On the other side, if the goal is to delete a single component, the `remove`
-member function template is the way to go when it's certain that the entity owns
-a copy of the component:
+If the goal is to delete a single component from an entity that owns it, the
+`remove` member function template is the way to go:
 
 ```cpp
 registry.remove<position>(entity);
 ```
 
-Otherwise consider to use the `reset` member function. It behaves similarly to
-`remove` but with a strictly defined behavior (and a performance penalty is the
-price to pay for this). In particular it removes the component if and only if it
-exists, otherwise it returns safely to the caller:
+When in doubt whether the entity owns the component, use the `remove_if_exists`
+member function instead. It behaves similarly to `remove` but it discards the
+component if and only if it exists, otherwise it returns safely to the caller:
 
 ```cpp
-registry.reset<position>(entity);
+registry.remove_if_exists<position>(entity);
 ```
 
-There exist also two other _versions_ of the `reset` member function:
+The `clear` member function works similarly and can be used to either:
 
-* If no entity is passed to it, `reset` will remove the given component from
-  each entity that has it:
-
-  ```cpp
-  registry.reset<position>();
-  ```
-
-* If neither the entity nor the component are specified, all the entities still
-  in use and their components are destroyed:
+* Remove all instances of the given components from the entities that own them:
 
   ```cpp
-  registry.reset();
+  registry.clear<position>();
   ```
 
-Finally, references to components can be retrieved simply by doing this:
+* Or destroy all entities in a registry at once:
+
+  ```cpp
+  registry.clear();
+  ```
+
+Finally, references to components can be retrieved simply as:
 
 ```cpp
 const auto &cregistry = registry;
@@ -324,8 +308,8 @@ const auto &crenderable = cregistry.get<renderable>(entity);
 auto &renderable = registry.get<renderable>(entity);
 
 // const and non-const references
-const auto &[cpos, cvel] = cregistry.get<position, velocity>(entity);
-auto &[pos, vel] = registry.get<position, velocity>(entity);
+const auto [cpos, cvel] = cregistry.get<position, velocity>(entity);
+auto [pos, vel] = registry.get<position, velocity>(entity);
 ```
 
 The `get` member function template gives direct access to the component of an
@@ -360,52 +344,36 @@ registry.on_construct<position>().disconnect<&my_class::member>(instance);
 ```
 
 To be notified when components are destroyed, use the `on_destroy` member
-function instead. Finally, the `on_replace` member function will return a sink
-to which to connect listeners to observe changes on components.
+function instead. Finally, the `on_update` member function will return a sink
+to which to connect listeners to observe changes.
 
-The function type of a listener for the construction signal should be equivalent
-to the following:
-
-```cpp
-void(entt::entity, entt::registry &, Component &);
-```
-
-Where `Component` is intuitively the type of component of interest. In other
-words, a listener is provided with the registry that triggered the notification
-and the entity affected by the change, in addition to the newly created
-instance.<br/>
-The sink returned by the `on_replace` member function accepts listeners the
-signature of which is the same of that of the construction signal. The one of
-the destruction signal is also similar, except for the `Component` parameter:
+The function type of a listener should be equivalent to the following:
 
 ```cpp
-void(entt::entity, entt::registry &);
+void(entt::registry &, entt::entity);
 ```
 
-This is mainly due to performance reasons. While the component is made available
-after the construction, it is not when destroyed. Because of that, there are no
-reasons to get it from the underlying storage unless the user requires so. In
-this case, the registry is made available for the purpose.
+In all cases, listeners are provided with the registry that triggered the
+notification and the involved entity.
 
 Note also that:
 
-* Listeners for the construction signal are invoked **after** components have
+* Listeners for the construction signals are invoked **after** components have
   been assigned to entities.
 
-* Listeners designed to observe changes are invoked **before** components have
-  been replaced and therefore before newly created instances have been assigned
-  to entities.
+* Listeners designed to observe changes are invoked **after** components have
+  been updated.
 
-* Listeners for the destruction signal are invoked **before** components have
+* Listeners for the destruction signals are invoked **before** components have
   been removed from entities.
 
-* The order of invocation of the listeners isn't guaranteed in any case.
-
-There are also some limitations on what a listener can and cannot do. In
-particular:
+There are also some limitations on what a listener can and cannot do:
 
 * Connecting and disconnecting other functions from within the body of a
   listener should be avoided. It can lead to undefined behavior in some cases.
+
+* Removing the component from within the body of a listener that observes the
+  construction or update of instances of a given type isn't allowed.
 
 * Assigning and removing components from within the body of a listener that
   observes the destruction of instances of a given type should be avoided. It
@@ -415,14 +383,12 @@ particular:
 
 To a certain extent, these limitations don't apply. However, it's risky to try
 to force them and users should respect the limitations unless they know exactly
-what they are doing. Subtle bugs are the price to pay in case of errors
-otherwise.
+what they are doing.
 
-In general, events and therefore listeners must not be used as replacements for
-systems. They should not contain much logic and interactions with a registry
-should be kept to a minimum, if possible. Note also that the greater the number
-of listeners, the greater the performance hit when components are created or
-destroyed.
+Events and therefore listeners must not be used as replacements for systems.
+They shouldn't contain much logic and interactions with a registry should be
+kept to a minimum. Moreover, the greater the number of listeners, the greater
+the performance hit when components are created or destroyed.
 
 Please, refer to the documentation of the signal class to know all the features
 it offers.<br/>
@@ -432,11 +398,9 @@ list of parameters that is shorter than that of the signal itself.
 
 ### They call me Reactive System
 
-As mentioned above, signals are the basic tools to construct reactive systems,
-even if they are not enough on their own.<br/>
-`EnTT` tries to take another step in that direction with the `observer` class
-template.
-
+Signals are the basic tools to construct reactive systems, even if they aren't
+enough on their own. `EnTT` tries to take another step in that direction with
+the `observer` class template.<br/>
 In order to explain what reactive systems are, this is a slightly revised quote
 from the documentation of the library that first introduced this tool,
 [Entitas](https://github.com/sschmid/Entitas-CSharp):
@@ -449,23 +413,22 @@ from the documentation of the library that first introduced this tool,
 In `EnTT`, this means to iterating over a reduced set of entities and components
 with respect to what would otherwise be returned from a view or a group.<br/>
 On these words, however, the similarities with the proposal of `Entitas` also
-end. The rules of language and the design of the library obviously impose and
-allow different things.
+end. The rules of the language and the design of the library obviously impose
+and allow different things.
 
 An `observer` is initialized with an instance of a registry and a set of rules
-that describe what are the entities to intercept. As an example:
+that describes what are the entities to intercept. As an example:
 
 ```cpp
-entt::observer observer{registry, entt::collector.replace<sprite>()};
+entt::observer observer{registry, entt::collector.update<sprite>()};
 ```
 
-The class is default constructible if required and it can be reconfigured at any
-time by means of the `connect` member function. Moreover, instances can be
-disconnected from the underlying registries through the `disconnect` member
-function.<br/>
-The `observer` offers also some member functions to query its internal state and
-to know if it's empty or how many entities it contains. Moreover, it can return
-a raw pointer to the list of entities it contains.
+The class is default constructible and can be reconfigured at any time by means
+of the `connect` member function. Moreover, instances can be disconnected from
+the underlying registries through the `disconnect` member function.<br/>
+The `observer` offers also what is needed to query the internal state and to
+know if it's empty or how many entities it contains. Moreover, it can return a
+raw pointer to the list of entities it contains.
 
 However, the most important features of this class are that:
 
@@ -487,7 +450,7 @@ for(const auto entity: observer) {
 observer.clear();
 ```
 
-Note that the snippet above is equivalent to the following:
+The snippet above is equivalent to the following:
 
 ```cpp
 observer.each([](const auto entity) {
@@ -504,11 +467,11 @@ rules) to use with an `observer` instead.<br/>
 There are two types of `matcher`s:
 
 * Observing matcher: an observer will return at least all the living entities
-  for which one or more of the given components have been explicitly replaced
-  and not yet destroyed.
+  for which one or more of the given components have been updated and not yet
+  destroyed.
 
   ```cpp
-  entt::collector.replace<sprite>();
+  entt::collector.update<sprite>();
   ```
 
 * Grouping matcher: an observer will return at least all the living entities
@@ -522,91 +485,40 @@ There are two types of `matcher`s:
   A grouping matcher supports also exclusion lists as well as single components.
 
 Roughly speaking, an observing matcher intercepts the entities for which the
-given components are replaced (as in `registry::replace`) while a grouping
-matcher tracks the entities that have assigned the given components since the
-last time one asked.<br/>
-Note that, for a grouping matcher, if an entity already has all the components
-except one and the missing type is assigned to it, it is intercepted.
+given components are updated while a grouping matcher tracks the entities that
+have assigned the given components since the last time one asked.<br/>
+If an entity already has all the components except one and the missing type is
+assigned to it, the entity is intercepted by a grouping matcher.
 
 In addition, a matcher can be filtered with a `where` clause:
 
 ```cpp
-entt::collector.replace<sprite>().where<position>(entt::exclude<velocity>);
+entt::collector.update<sprite>().where<position>(entt::exclude<velocity>);
 ```
 
 This clause introduces a way to intercept entities if and only if they are
 already part of a hypothetical group. If they are not, they aren't returned by
 the observer, no matter if they matched the given rule.<br/>
-In the example above, whenever the component `sprite` of an entity is replaced,
+In the example above, whenever the component `sprite` of an entity is updated,
 the observer probes the entity itself to verify that it has at least `position`
 and has not `velocity` before to store it aside. If one of the two conditions of
 the filter isn't respected, the entity is discared, no matter what.
 
 A `where` clause accepts a theoretically unlimited number of types as well as
-multiple elements in the exclusion list. Moreover, every matcher can have it's
+multiple elements in the exclusion list. Moreover, every matcher can have its
 own clause and multiple clauses for the same matcher are combined in a single
 one.
 
-## Runtime components
-
-Defining components at runtime is useful to support plugin systems and mods in
-general. However, it seems impossible with a tool designed around a bunch of
-templates. Indeed it's not that difficult.<br/>
-Of course, some features cannot be easily exported into a runtime
-environment. As an example, sorting a group of components defined at runtime
-isn't for free if compared to most of the other operations. However, the basic
-functionalities of an entity-component system such as `EnTT` fit the problem
-perfectly and can also be used to manage runtime components if required.<br/>
-All that is necessary to do it is to know the identifiers of the components. An
-identifier is nothing more than a number or similar that can be used at runtime
-to work with the type system.
-
-In `EnTT`, identifiers are easily accessible:
-
-```cpp
-entt::registry registry;
-
-// component identifier
-auto type = registry.type<position>();
-```
-
-Once the identifiers are made available, almost everything becomes pretty
-simple.
-
-### A journey through a plugin
-
-`EnTT` comes with an example (actually a test) that shows how to integrate
-compile-time and runtime components in a stack based JavaScript environment. It
-uses [`Duktape`](https://github.com/svaarala/duktape) under the hood, mainly
-because I wanted to learn how it works at the time I was writing the code.
-
-The code is not production-ready and overall performance can be highly improved.
-However, I sacrificed optimizations in favor of a more readable piece of code. I
-hope I succeeded.<br/>
-Note also that this isn't neither the only nor (probably) the best way to do it.
-In fact, the right way depends on the scripting language and the problem one is
-facing in general.<br/>
-That being said, feel free to use it at your own risk.
-
-The basic idea is that of creating a compile-time component aimed to map all the
-runtime components assigned to an entity.<br/>
-Identifiers come in use to address the right function from a map when invoked
-from the runtime environment and to filter entities when iterating.<br/>
-With a bit of gymnastic, one can narrow views and improve the performance to
-some extent but it was not the goal of the example.
-
 ## Sorting: is it possible?
 
-It goes without saying that sorting entities and components is possible with
-`EnTT`.<br/>
-In fact, there are two functions that respond to slightly different needs:
+Sorting entities and components is possible with `EnTT`.<br/>
+There are two functions that respond to slightly different needs:
 
 * Components can be sorted either directly:
 
   ```cpp
   registry.sort<renderable>([](const auto &lhs, const auto &rhs) {
       return lhs.z < rhs.z;
-
   });
   ```
 
@@ -618,12 +530,9 @@ In fact, there are two functions that respond to slightly different needs:
   });
   ```
 
-  There exists also the possibility to use a custom sort function object, as
-  long as it adheres to the requirements described in the inline
-  documentation.<br/>
-  This is possible mainly because users can get much more with a custom sort
-  function object if the usage pattern is known. As an example, in case of an
-  almost sorted pool, quick sort could be much, much slower than insertion sort.
+  There exists also the possibility to use a custom sort function object for
+  when the usage pattern is known. As an example, in case of an almost sorted
+  pool, quick sort could be much slower than insertion sort.
 
 * Components can be sorted according to the order imposed by another component:
 
@@ -634,10 +543,8 @@ In fact, there are two functions that respond to slightly different needs:
   In this case, instances of `movement` are arranged in memory so that cache
   misses are minimized when the two components are iterated together.
 
-As a side note, when groups are involved, the sorting functions are applied
-separately to the elements that are part of the group and to those that are not,
-effectively generating two partitions, both of which can be ordered
-independently of each other.
+As a side note, the use of groups limits the possibility of sorting pools of
+components. Refer to the specific documentation for more details.
 
 ## Helpers
 
@@ -647,17 +554,15 @@ The list of helpers will grow longer as time passes and new ideas come out.
 
 ### Null entity
 
-In `EnTT`, there exists a sort of _null entity_ made available to users that is
-accessible via the `entt::null` variable.<br/>
+In `EnTT`, the `entt::null` variable models the concept of _null entity_.<br/>
 The library guarantees that the following expression always returns false:
 
 ```cpp
 registry.valid(entt::null);
 ```
 
-In other terms, a registry will reject the null entity in all cases because it
-isn't considered valid. It means that the null entity cannot own components for
-obvious reasons.<br/>
+A registry rejects the null entity in all cases because it isn't considered
+valid. It also means that the null entity cannot own components.<br/>
 The type of the null entity is internal and should not be used for any purpose
 other than defining the null entity itself. However, there exist implicit
 conversions from the null entity to identifiers of any allowed type:
@@ -673,72 +578,53 @@ const auto entity = registry.create();
 const bool null = (entity == entt::null);
 ```
 
-### Stomp and spawn
-
-The use of multiple registries is quite common. Examples of use are the
-separation of the UI from the simulation or the loading of different scenes in
-the background, possibly on a separate thread, without having to keep track of
-which entity belongs to which scene.<br/>
-In fact, with `EnTT` this is even a recommended practice, as the registry is
-nothing more than a container and different optimizations and strategies can be
-applied to different containers.
-
-Once there are multiple registries available, however, one or more methods are
-needed to transfer information from one container to another and this results in
-the `stomp` member function and a couple of overloads of the `create` member
-function for the `registry` class .<br/>
-The `stomp` function allows to take one entity from a registry and use it to
-_stomp_ one or more entities in another registry (or even the same, actually
-making local copies). On the other hand, the overloads of the `create` member
-function can be used to spawn new entities from a prototype.
-
-These features open definitely the doors to a lot of interesting features like
-migrating entities between registries, prototypes, shadow registry, prefabs,
-shared components without an explicit owner and copy-on-write policies among the
-other things.
+Be aware that `entt::null` and entity 0 aren't the same thing. Likewise, a zero
+initialized entity isn't the same as `entt::null`. Therefore, although
+`entt::entity{}` is in some sense an alias for entity 0, none of them can be
+used to create a null entity.
 
 ### Dependencies
 
-The `registry` class is designed to create short circuits between its functions
-within certain limits. This allows to easily define dependencies between
-different operations.<br/>
+The `registry` class is designed to be able to create short circuits between its
+functions. This simplifies the definition of _dependencies_ between different
+operations.<br/>
 For example, the following adds (or replaces) the component `a_type` whenever
 `my_type` is assigned to an entity:
 
 ```cpp
-registry.on_construct<my_type>().connect<&entt::registry::assign_or_replace<a_type>>(registry);
+registry.on_construct<my_type>().connect<&entt::registry::emplace_or_replace<a_type>>();
 ```
 
 Similarly, the code shown below removes `a_type` from an entity whenever
 `my_type` is assigned to it:
 
 ```cpp
-registry.on_construct<my_type>().connect<&entt::registry::reset<a_type>>(registry);
+registry.on_construct<my_type>().connect<&entt::registry::remove<a_type>>();
 ```
 
 A dependency can also be easily broken as follows:
 
 ```cpp
-registry.on_construct<my_type>().disconnect<&entt::registry::assign_or_replace<a_type>>(registry);
+registry.on_construct<my_type>().disconnect<&entt::registry::emplace_or_replace<a_type>>();
 ```
 
-There are many other types of dependencies besides those shown above. In
-general, all functions that accept an entity as the first argument are good
-candidates for this purpose.
+There are many other types of dependencies. In general, most of the functions
+that accept an entity as the first argument are good candidates for this
+purpose.
 
-### Tags
+### Invoke
 
-There's nothing magical about the way tags can be assigned to entities while
-avoiding a performance hit at runtime. Nonetheless, the syntax can be annoying
-and that's why a more user-friendly shortcut is provided to do it.<br/>
-This shortcut is the alias template `entt::tag`.
-
-If used in combination with hashed strings, it helps to use tags where types
-would be required otherwise. As an example:
+Sometimes it's useful to be able to directly invoke a member function of a
+component as a callback. It's already possible in practice but requires users to
+_extend_ their classes and this may not always be possible.<br/>
+The `invoke` helper allows to _propagate_ the signal in these cases:
 
 ```cpp
-registry.assign<entt::tag<"enemy"_hs>>(entity);
+registry.on_construct<clazz>().connect<entt::invoke<&clazz::func>>();
 ```
+
+All it does is pick up the _right_ component for the received entity and invoke
+the requested method, passing on the arguments if necessary.
 
 ### Actor
 
@@ -747,8 +633,8 @@ working with components or for those who are migrating a project and want to
 approach it one step at a time.
 
 This class acts as a thin wrapper for an entity and for all its components. It's
-constructed with a registry to be used behind the scenes and is in charge of the
-destruction of the entity when it goes out of the scope.<br/>
+constructed with a registry and is in charge of the destruction of the entity
+when it goes out of the scope.<br/>
 An actor offers all the functionalities required to work with components, such
 as the `assign` and` remove` member functions, but also `has`,` get`, `try_get`
 and so on.
@@ -764,9 +650,9 @@ groups, rather than with a tool that could introduce a performance degradation.
 It is often convenient to assign context variables to a registry, so as to make
 it the only _source of truth_ of an application.<br/>
 This is possible by means of a member function named `set` to use to create a
-context variable from a given type. Later on, either `ctx` or `try_ctx` can be
-used to retrieve the newly created instance and `unset` is there to literally
-reset it if needed.
+context variable from a given type. Either `ctx` or `try_ctx` can be used to
+retrieve the newly created instance, while `unset` is meant to clear the
+variable if needed.
 
 Example of use:
 
@@ -790,8 +676,157 @@ The type of a context variable must be such that it's default constructible and
 can be moved. The `set` member function either creates a new instance of the
 context variable or overwrites an already existing one if any. The `try_ctx`
 member function returns a pointer to the context variable if it exists,
-otherwise it returns a null pointer. This fits well with the `if` statement with
-initializer.
+otherwise it returns a null pointer.
+
+## Meet the runtime
+
+Type identifiers are stable in `EnTT` during executions and most of the times
+also across different executions and across boundaries. This makes them suitable
+to mix runtime and compile-time features.<br/>
+The registry offers a function to _visit_ it and get the types of components it
+manages:
+
+```cpp
+registry.visit([](const auto component) {
+    // ...
+});
+```
+
+Moreover, there exists an overload to _visit_ a specific entity:
+
+```cpp
+registry.visit(entity, [](const auto component) {
+    // ...
+});
+```
+
+This helps to create a bridge between the registry, that is heavily based on the
+C++ type system, and any other context where the compile-time isn't an option.
+For example: plugin systems, meta system, serialization, and so on.
+
+### Cloning a registry
+
+Cloning a registry isn't a suggested practice since it could trigger many copies
+and cut down the performance. Moreover, because of how the `registry` class is
+designed, supporting this as a built-in feature would increase the compilation
+times also for the users that aren't interested in cloning. Even worse, it would
+make difficult to define different _cloning policies_ for different types when
+required.<br/>
+This is why function definitions for cloning have been moved to the user space.
+The `visit` member function of the `registry` class can help filling the gap,
+along with the `insert` functionality.
+
+A general purpose cloning function could be defined as:
+
+```cpp
+template<typename Type>
+void clone(const entt::registry &from, entt::registry &to) {
+    const auto *data = from.data<Type>();
+    const auto size = from.size<Type>();
+
+    if constexpr(ENTT_IS_EMPTY(Type)) {
+        to.insert<Type>(data, data + size);
+    } else {
+        const auto *raw = from.raw<Type>();
+        to.insert<Type>(data, data + size, raw, raw + size);
+    }
+}
+```
+
+This is probably the fastest method to inject entities and components in a
+registry that isn't necessarily empty. All new elements are _appended_ to the
+existing ones, if any.<br/>
+This function is also eligible for type erasure in order to create a mapping
+between type identifiers and opaque methods for cloning:
+
+```cpp
+using clone_fn_type = void(const entt::registry &, entt::registry &);
+std::unordered_map<entt::id_type, clone_fn_type *> clone_functions;
+
+// ...
+
+clone_functions[entt::type_info<position>::id()] = &clone<position>;
+clone_functions[entt::type_info<velocity>::id()] = &clone<velocity>;
+```
+
+Stamping a registry becomes straightforward with such a mapping then:
+
+```cpp
+entt::registry from;
+entt::registry to;
+
+// ...
+
+from.visit([this, &to](const auto type_id) {
+    clone_functions[type_id](from, to);
+});
+```
+
+Custom cloning functions are also pretty easy to define. Moreover, also cloning
+registries specialized with different identifiers is possible this way.<br/>
+As a side note, cloning functions could be also attached to a reflection system
+where meta types are resolved using the runtime type identifiers.
+
+### Stamping an entity
+
+Using multiple registries at the same time is quite common. Examples are the
+separation of the UI from the simulation or the loading of different scenes in
+the background, possibly on a separate thread, without having to keep track of
+which entity belongs to which scene.<br/>
+In fact, with `EnTT` this is even a recommended practice, as the registry is
+nothing more than an opaque container you can swap at any time.
+
+Once there are multiple registries available, one or more methods are needed to
+transfer information from one container to another though.<br/>
+This is where the `visit` member function of the `registry` class enters the
+game.
+
+Since stamping a component could require different methods for different types
+and not all users want to benefit from this feature, function definitions have
+been moved from the registry to the user space.<br/>
+This helped to reduce compilation times and to allow for maximum flexibility,
+even though it requires users to set up their own stamping functions.
+
+The best bet here is probably to define a reflection system or a mapping between
+the type identifiers and their opaque functions for stamping. As an example:
+
+```
+template<typename Type>
+void stamp(const entt::registry &from, const entt::entity src, entt::registry &to, const entt::entity dst) {
+    to.emplace_or_replace<Type>(dst, from.get<Type>(src));
+}
+```
+
+If the definition above is treated as a general purpose function for stamping,
+one can easily construct a map like the following one as a data member of a
+dedicate system:
+
+```cpp
+using stamp_fn_type = void(const entt::registry &, const entt::entity, entt::registry &, const entt::entity);
+std::unordered_map<entt::id_type, stamp_fn_type *> stamp_functions;
+
+// ...
+
+stamp_functions[entt::type_info<position>::id()] = &stamp<position>;
+stamp_functions[entt::type_info<velocity>::id()] = &stamp<velocity>;
+```
+
+Then _stamp_ entities across different registries as:
+
+```cpp
+entt::registry from;
+entt::registry to;
+
+// ...
+
+from.visit(src, [this, &to, dst](const auto type_id) {
+    stamp_functions[type_id](from, src, to, dst);
+});
+```
+
+This way it's also pretty easy to define custom stamping functions for _special_
+types if needed. Moreover, stamping entities across registries specialized with
+different identifiers is possibile in practice.
 
 ## Snapshot: complete vs continuous
 
@@ -810,46 +845,36 @@ suitable for local save/restore functionalities while the latter is suitable for
 creating client-server applications and for transferring somehow parts of the
 representation side to side.
 
-To take a snapshot of the registry, use the `snapshot` member function. It
-returns a temporary object properly initialized to _save_ the whole registry or
-parts of it.
-
-Example of use:
+To take a snapshot of a registry, use the `snapshot` class:
 
 ```cpp
 output_archive output;
 
-registry.snapshot()
+snapshot{registry}
     .entities(output)
-    .destroyed(output)
     .component<a_component, another_component>(output);
 ```
 
-It isn't necessary to invoke all these functions each and every time. What
-functions to use in which case mostly depends on the goal and there is not a
-golden rule to do that.
+It isn't necessary to invoke all functions each and every time. What functions
+to use in which case mostly depends on the goal and there is not a golden rule
+for that.
 
-The `entities` member function asks the registry to serialize all the entities
-that are still in use along with their versions. On the other side, the
-`destroyed` member function tells to the registry to serialize the entities that
-have been destroyed and are no longer in use.<br/>
-These two functions can be used to save and restore the whole set of entities
-with the versions they had during serialization.
-
-The `component` member function is a function template the aim of which is to
-store aside components. The presence of a template parameter list is a
-consequence of a couple of design choices from the past and in the present:
+The `entities` member function makes the snapshot serialize all entities (both
+those still alive and those destroyed) along with their versions.<br/>
+On the other hand, the `component` member function is a function template the
+aim of which is to store aside components. The presence of a template parameter
+list is a consequence of a couple of design choices from the past and in the
+present:
 
 * First of all, there is no reason to force a user to serialize all the
   components at once and most of the times it isn't desiderable. As an example,
   in case the stuff for the HUD in a game is put into the registry for some
   reasons, its components can be freely discarded during a serialization step
-  because probably the software already knows how to reconstruct the HUD
-  correctly from scratch.
+  because probably the software already knows how to reconstruct them correctly.
 
 * Furthermore, the registry makes heavy use of _type-erasure_ techniques
   internally and doesn't know at any time what component types it contains.
-  Therefore being explicit at the call point is mandatory.
+  Therefore being explicit at the call site is mandatory.
 
 There exists also another version of the `component` member function that
 accepts a range of entities to serialize. This version is a bit slower than the
@@ -862,7 +887,7 @@ As an example:
 const auto view = registry.view<serialize>();
 output_archive output;
 
-registry.snapshot().component<a_component, another_component>(output, view.cbegin(), view.cend());
+snapshot{registry}.component<a_component, another_component>(output, view.cbegin(), view.cend());
 ```
 
 Note that `component` stores items along with entities. It means that it works
@@ -877,28 +902,24 @@ The following sections describe both loaders and archives in details.
 A snapshot loader requires that the destination registry be empty and loads all
 the data at once while keeping intact the identifiers that the entities
 originally had.<br/>
-To do that, the registry offers a member function named `loader` that returns a
-temporary object properly initialized to _restore_ a snapshot.
-
-Example of use:
+To use it, just pass to the constructor a valid registry:
 
 ```cpp
 input_archive input;
 
-registry.loader()
+snapshot_loader{registry}
     .entities(input)
-    .destroyed(input)
     .component<a_component, another_component>(input)
     .orphans();
 ```
 
-It isn't necessary to invoke all these functions each and every time. What
-functions to use in which case mostly depends on the goal and there is not a
-golden rule to do that. For obvious reasons, what is important is that the data
-are restored in exactly the same order in which they were serialized.
+It isn't necessary to invoke all functions each and every time. What functions
+to use in which case mostly depends on the goal and there is not a golden rule
+for that. For obvious reasons, what is important is that the data are restored
+in exactly the same order in which they were serialized.
 
-The `entities` and `destroyed` member functions restore the sets of entities and
-the versions that the entities originally had at the source.
+The `entities` member function restores the sets of entities and the versions
+that they originally had at the source.
 
 The `component` member function restores all and only the components specified
 and assigns them to the right entities. Note that the template parameter list
@@ -908,25 +929,23 @@ The `orphans` member function literally destroys those entities that have no
 components attached. It's usually useless if the snapshot is a full dump of the
 source. However, in case all the entities are serialized but only few components
 are saved, it could happen that some of the entities have no components once
-restored. The best users can do to deal with them is to destroy those entities
-and thus update their versions.
+restored. The best the users can do to deal with them is to destroy those
+entities and thus update their versions.
 
 ### Continuous loader
 
 A continuous loader is designed to load data from a source registry to a
 (possibly) non-empty destination. The loader can accommodate in a registry more
-than one snapshot in a sort of _continuous loading_ that updates the
-destination one step at a time.<br/>
+than one snapshot in a sort of _continuous loading_ that updates the destination
+one step at a time.<br/>
 Identifiers that entities originally had are not transferred to the target.
 Instead, the loader maps remote identifiers to local ones while restoring a
 snapshot. Because of that, this kind of loader offers a way to update
 automatically identifiers that are part of components (as an example, as data
 members or gathered in a container).<br/>
-Another difference with the snapshot loader is that the continuous loader does
-not need to work with the private data structures of a registry. Furthermore, it
-has an internal state that must persist over time. Therefore, there is no reason
-to create it by means of a registry, or to limit its lifetime to that of a
-temporary object.
+Another difference with the snapshot loader is that the continuous loader has an
+internal state that must persist over time. Therefore, there is no reason to
+limit its lifetime to that of a temporary object.
 
 Example of use:
 
@@ -935,22 +954,20 @@ entt::continuous_loader<entt::entity> loader{registry};
 input_archive input;
 
 loader.entities(input)
-    .destroyed(input)
     .component<a_component, another_component, dirty_component>(input, &dirty_component::parent, &dirty_component::child)
     .orphans()
     .shrink();
 ```
 
-It isn't necessary to invoke all these functions each and every time. What
-functions to use in which case mostly depends on the goal and there is not a
-golden rule to do that. For obvious reasons, what is important is that the data
-are restored in exactly the same order in which they were serialized.
+It isn't necessary to invoke all functions each and every time. What functions
+to use in which case mostly depends on the goal and there is not a golden rule
+for that. For obvious reasons, what is important is that the data are restored
+in exactly the same order in which they were serialized.
 
-The `entities` and `destroyed` member functions restore groups of entities and
-map each entity to a local counterpart when required. In other terms, for each
-remote entity identifier not yet registered by the loader, the latter creates a
-local identifier so that it can keep the local entity in sync with the remote
-one.
+The `entities` member function restores groups of entities and maps each entity
+to a local counterpart when required. In other terms, for each remote entity
+identifier not yet registered by the loader, it creates a local identifier so
+that it can keep the local entity in sync with the remote one.
 
 The `component` member function restores all and only the components specified
 and assigns them to the right entities.<br/>
@@ -982,9 +999,15 @@ In particular:
   void operator()(entt::entity);
   ```
 
-  Where `entt::entity` is the type of the entities used by the registry. Note
-  that all the member functions of the snapshot class make also an initial call
-  to this endpoint to save the _size_ of the set they are going to store.<br/>
+  Where `entt::entity` is the type of the entities used by the registry.<br/>
+  Note that all member functions of the snapshot class make also an initial call
+  to store aside the _size_ of the set they are going to store. In this case,
+  the expected function type for the function call operator is:
+
+  ```cpp
+  void operator()(std::underlying_type_t<entt::entity>);
+  ```
+
   In addition, an archive must accept a pair of entity and component for each
   type to be serialized. Therefore, given a type `T`, the archive must contain a
   function call operator with the following signature:
@@ -1005,12 +1028,18 @@ In particular:
 
   Where `entt::entity` is the type of the entities used by the registry. Each
   time the function is invoked, the archive must read the next element from the
-  underlying storage and copy it in the given variable. Note that all the member
-  functions of a loader class make also an initial call to this endpoint to read
-  the _size_ of the set they are going to load.<br/>
-  In addition, the archive must accept a pair of entity and component for each
-  type to be restored. Therefore, given a type `T`, the archive must contain a
-  function call operator with the following signature:
+  underlying storage and copy it in the given variable.<br/>
+  Note that all member functions of a loader class make also an initial call to
+  read the _size_ of the set they are going to load. In this case, the expected
+  function type for the function call operator is:
+
+  ```cpp
+  void operator()(std::underlying_type_t<entt::entity> &);
+  ```
+
+  In addition, the archive must accept a pair of references to an entity and its
+  component for each type to be restored. Therefore, given a type `T`, the
+  archive must contain a function call operator with the following signature:
 
   ```cpp
   void operator()(entt::entity &, T &);
@@ -1034,41 +1063,37 @@ everything back to the registry with different loaders.
 
 # Views and Groups
 
-First of all, it is worth answering an obvious question: why views and
-groups?<br/>
-Briefly, they are a good tool to enforce single responsibility. A system that
-has access to a registry can create and destroy entities, as well as assign and
+First of all, it's worth answering a question: why views and groups?<br/>
+Briefly, they're a good tool to enforce single responsibility. A system that has
+access to a registry can create and destroy entities, as well as assign and
 remove components. On the other side, a system that has access to a view or a
-group can only iterate entities and their components, then read or update the
-data members of the latter.<br/>
+group can only iterate, read and update entities and components.<br/>
 It is a subtle difference that can help designing a better software sometimes.
 
-More in details, views are a non-intrusive tool to access entities and
-components without affecting other functionalities or increasing the memory
-consumption. On the other side, groups are an intrusive tool that allows to
-reach higher performance along critical paths but has also a price to pay for
-that.
+More in details:
+
+* Views are a non-intrusive tool to access entities and components without
+  affecting other functionalities or increasing the memory consumption.
+
+* Groups are an intrusive tool that allows to reach higher performance along
+  critical paths but has also a price to pay for that.
 
 There are mainly two kinds of views: _compile-time_ (also known as `view`) and
 runtime (also known as `runtime_view`).<br/>
-The former require that users indicate at compile-time what are the components
-involved and can make several optimizations because of that. The latter can be
-constructed at runtime instead and are a bit slower to iterate entities and
-components.<br/>
-In both cases, creating and destroying a view isn't expensive at all because
-views don't have any type of initialization. Moreover, views don't affect any
-other functionality of the registry and keep memory usage at a minimum.
+The former requires a compile-time list of component types and can make several
+optimizations because of that. The latter can be constructed at runtime instead
+using numerical type identifiers and are a bit slower to iterate.<br/>
+In both cases, creating and destroying a view isn't expensive at all since they
+don't have any type of initialization.
 
 Groups come in three different flavors: _full-owning groups_, _partial-owning
 groups_ and _non-owning groups_. The main difference between them is in terms of
 performance.<br/>
-Groups can literally _own_ one or more component types. It means that they will
-be allowed to rearrange pools so as to speed up iterations. Roughly speaking:
-the more components a group owns, the faster it is to iterate them. On the other
-side, a given component can belong to multiple groups only if they are _nested_,
-so users have to define groups carefully to get the best out of them.
-
-Continue reading for more details or refer to the inline documentation.
+Groups can literally _own_ one or more component types. They are allowed to
+rearrange pools so as to speed up iterations. Roughly speaking: the more
+components a group owns, the faster it is to iterate them.<br/>
+A given component can belong to multiple groups only if they are _nested_, so
+users have to define groups carefully to get the best out of them.
 
 ## Views
 
@@ -1091,11 +1116,10 @@ Multi component views iterate entities that have at least all the given
 components in their bags. During construction, these views look at the number of
 entities available for each component and pick up a reference to the smallest
 set of candidates in order to speed up iterations.<br/>
-They offer fewer functionalities than their companion views for single
-component. In particular, a multi component view exposes utility functions to
-get the estimated number of entities it is going to return and to know whether
-it's empty or not. It's also possible to ask a view if it contains a given
-entity.<br/>
+They offer fewer functionalities than single component views. In particular,
+a multi component view exposes utility functions to get the estimated number of
+entities it is going to return and to know whether it's empty or not. It's also
+possible to ask a view if it contains a given entity.<br/>
 Refer to the inline documentation for all the details.
 
 There is no need to store views around for they are extremely cheap to
@@ -1130,14 +1154,13 @@ for(auto entity: view) {
     auto &velocity = view.get<velocity>(entity);
 
     // ... or multiple components at once
-    auto &[pos, vel] = view.get<position, velocity>(entity);
+    auto [pos, vel] = view.get<position, velocity>(entity);
 
     // ...
 }
 ```
 
-Or rely on the `each` member function to iterate entities and get all their
-components at once:
+Or rely on the `each` member function to iterate both entities and components:
 
 ```cpp
 registry.view<position, velocity>().each([](auto entity, auto &pos, auto &vel) {
@@ -1149,9 +1172,8 @@ The `each` member function is highly optimized. Unless users want to iterate
 only entities or get only some of the components, this should be the preferred
 approach. Note that the entity can also be excluded from the parameter list if
 not required, but this won't improve performance for multi component views.<br/>
-There exists also an alternative version of `each` named `less` that works
-exactly as its counterpart but for the fact that it doesn't return empty
-components to the caller.
+Since they aren't explicitly instantiated, empty components aren't returned in
+any case.
 
 As a side note, in the case of single component views, `get` accepts but doesn't
 strictly require a template parameter, since the type is implicitly defined:
@@ -1165,9 +1187,8 @@ for(auto entity: view) {
 }
 ```
 
-**Note**: prefer the `get` member function of a view instead of the `get` member
-function template of a registry during iterations, if possible. However, keep in
-mind that it works only with the components of the view itself.
+**Note**: prefer the `get` member function of a view instead of that of a
+registry during iterations to get the types iterated by the view itself.
 
 ## Runtime views
 
@@ -1189,7 +1210,7 @@ thrown away. The reasons for this go far beyond the scope of this document.<br/>
 To iterate a runtime view, either use it in a range-for loop:
 
 ```cpp
-entt::component types[] = { registry.type<position>(), registry.type<velocity>() };
+entt::component types[] = { entt::type_info<position>::id(), entt::type_info<velocity>::id() };
 auto view = registry.runtime_view(std::cbegin(types), std::cend(types));
 
 for(auto entity: view) {
@@ -1198,7 +1219,7 @@ for(auto entity: view) {
     auto &velocity = registry.get<velocity>(entity);
 
     // ... or multiple components at once
-    auto &[pos, vel] = registry.get<position, velocity>(entity);
+    auto [pos, vel] = registry.get<position, velocity>(entity);
 
     // ...
 }
@@ -1207,7 +1228,7 @@ for(auto entity: view) {
 Or rely on the `each` member function to iterate entities:
 
 ```cpp
-entt::component types[] = { registry.type<position>(), registry.type<velocity>() };
+entt::component types[] = { entt::type_info<position>::id(), entt::type_info<velocity>::id() };
 
 registry.runtime_view(std::cbegin(types), std::cend(types)).each([](auto entity) {
     // ...
@@ -1224,9 +1245,8 @@ views.
 
 ## Groups
 
-Groups are meant to iterate multiple components at once and offer a (much)
-faster alternative to views. Roughly speaking, they just play in another league
-when compared to views.<br/>
+Groups are meant to iterate multiple components at once and to offer a faster
+alternative to multi component views.<br/>
 Groups overcome the performance of the other tools available but require to get
 the ownership of components and this sets some constraints on pools. On the
 other side, groups aren't an automatism that increases memory consumption,
@@ -1250,7 +1270,7 @@ This is due to the fact that they must _observe_ changes in the pools of
 interest and arrange data _correctly_ when needed for the types they own.<br/>
 That being said, the way groups operate is beyond the scope of this document.
 However, it's unlikely that users will be able to appreciate the impact of
-groups on other functionalities of the registry.
+groups on the other functionalities of a registry.
 
 Groups offer a bunch of functionalities to get the number of entities they are
 going to return and a raw access to the entity list as well as to the component
@@ -1277,14 +1297,13 @@ for(auto entity: group) {
     auto &velocity = group.get<velocity>(entity);
 
     // ... or multiple components at once
-    auto &[pos, vel] = group.get<position, velocity>(entity);
+    auto [pos, vel] = group.get<position, velocity>(entity);
 
     // ...
 }
 ```
 
-Or rely on the `each` member function to iterate entities and get all their
-components at once:
+Or rely on the `each` member function to iterate both entities and components:
 
 ```cpp
 registry.group<position>(entt::get<velocity>).each([](auto entity, auto &pos, auto &vel) {
@@ -1297,13 +1316,8 @@ only entities, this should be the preferred approach. Note that the entity can
 also be excluded from the parameter list if not required and it can improve even
 further the performance during iterations.
 
-**Note**: prefer the `get` member function of a group instead of the `get`
-member function template of a registry during iterations, if possible. However,
-keep in mind that it works only with the components of the group itself.
-
-Let's go a bit deeper into the different types of groups made available by this
-library to know how they are constructed and what are the differences between
-them.
+**Note**: prefer the `get` member function of a group instead of that of a
+registry during iterations to get the types iterated by the group itself.
 
 ### Full-owning groups
 
@@ -1311,7 +1325,7 @@ A full-owning group is the fastest tool an user can expect to use to iterate
 multiple components at once. It iterates all the components directly, no
 indirection required. This type of groups performs more or less as if users are
 accessing sequentially a bunch of packed arrays of components all sorted
-identically.
+identically, with no jumps nor branches.
 
 A full-owning group is created as:
 
@@ -1326,14 +1340,11 @@ auto group = registry.group<position, velocity>(entt::exclude<renderable>);
 ```
 
 Once created, the group gets the ownership of all the components specified in
-the template parameter list and arranges their pools so as to iterate all of
-them as fast as possible.
+the template parameter list and arranges their pools as needed.
 
 Sorting owned components is no longer allowed once the group has been created.
 However, full-owning groups can be sorted by means of their `sort` member
-functions, if required. Sorting a full-owning group affects all the instances of
-the same group (it means that users don't have to call `sort` on each instance
-to sort all of them because they share the underlying data structure).
+functions. Sorting a full-owning group affects all its instances.
 
 ### Partial-owning groups
 
@@ -1356,16 +1367,12 @@ auto group = registry.group<position>(entt::get<velocity>, entt::exclude<rendera
 ```
 
 Once created, the group gets the ownership of all the components specified in
-the template parameter list and arranges their pools so as to iterate all of
-them as fast as possible. The ownership of the types provided via `entt::get`
-doesn't pass to the group instead.
+the template parameter list and arranges their pools as needed. The ownership of
+the types provided via `entt::get` doesn't pass to the group instead.
 
 Sorting owned components is no longer allowed once the group has been created.
 However, partial-owning groups can be sorted by means of their `sort` member
-functions, if required. Sorting a partial-owning group affects all the instances
-of the same group (it means that users don't have to call `sort` on each
-instance to sort all of them because they share the underlying data
-structure).
+functions. Sorting a partial-owning group affects all its instances.
 
 ### Non-owning groups
 
@@ -1388,13 +1395,10 @@ auto group = registry.group<>(entt::get<position, velocity>, entt::exclude<rende
 
 The group doesn't receive the ownership of any type of component in this
 case. This type of groups is therefore the least performing in general, but also
-the only one that can be used in any situation to improve a performance where
-necessary.
+the only one that can be used in any situation to slightly improve performance.
 
-Non-owning groups can be sorted by means of their `sort` member functions, if
-required. Sorting a non-owning group affects all the instance of the same group
-(it means that users don't have to call `sort` on each instance to sort all of
-them because they share the set of entities).
+Non-owning groups can be sorted by means of their `sort` member functions.
+Sorting a non-owning group affects all its instances.
 
 ### Nested groups
 
@@ -1410,13 +1414,12 @@ also called _nested groups_, such as:
 * `registry.group<sprite, transform, rotation>()`.
 
 Fortunately, these are also very common cases if not the most common ones.<br/>
-This allows users to have the highest possible performance on a greater number
-of component combinations.
+It allows to increase performance on a greater number of component combinations.
 
-Two nested groups are such that they own at least one type of component and the
-list of component types involved by one of them is contained entirely in that of
-the other. More specifically, this applies independently to all component lists
-used to define a group.<br/>
+Two nested groups are such that they own at least one componet type and the list
+of component types involved by one of them is contained entirely in that of the
+other. More specifically, this applies independently to all component lists used
+to define a group.<br/>
 Therefore, the rules for defining whether two or more groups are nested can be
 summarized as:
 
@@ -1427,25 +1430,24 @@ summarized as:
   contains entirely that of the others. This also applies to the list of
   observed and excluded components.
 
-It means that more nested groups _extend_ the their parents by adding more
-conditions in the form of new components.
+It means that nested groups _extend_ their parents by adding more conditions in
+the form of new components.
 
 As mentioned, the components don't necessarily have to be all _owned_ so that
-two groups can be considered nested. In other words, the following definitions
-are fully valid:
+two groups can be considered nested. The following definitions are fully valid:
 
 * `registry.group<sprite>(entt::get<renderable>)`.
 * `registry.group<sprite, transform>(entt::get<renderable>)`.
 * `registry.group<sprite, transform>(entt::get<renderable, rotation>)`.
 
 Exclusion lists also play their part in this respect. When it comes to defining
-nested groups, an excluded type of component `T` is treated as being an observed
-type `not_T`. Therefore, these two definitions:
+nested groups, an excluded component type `T` is treated as being an observed
+type `not_T`. Therefore, consider these two definitions:
 
 * `registry.group<sprite, transform>()`.
 * `registry.group<sprite, transform>(entt::exclude<rotation>)`.
 
-Are treated as if users were defining the following groups:
+They are treated as if users were defining the following groups:
 
 * `group<sprite, transform>()`.
 * `group<sprite, transform>(entt::get<not_rotation>)`.
@@ -1462,7 +1464,7 @@ expressed.<br/>
 Note that the greater the number of component types involved by a group, the
 more restrictive it is.
 
-Despite the extreme flexibility of nested groups, which allow to independently
+Despite the extreme flexibility of nested groups which allow to independently
 use component types either owned, observed or excluded, the real strength of
 this tool lies in the possibility of defining a greater number of groups that
 **own** the same components, thus offering the best performance in more
@@ -1484,9 +1486,8 @@ The `registry` class offers two overloads when it comes to constructing views
 and groups: a const version and a non-const one. The former accepts both const
 and non-const types as template parameters, the latter accepts only const types
 instead.<br/>
-It means that views and groups can be constructed also from a const registry and
-they propagate the constness of the registry to the types involved. As an
-example:
+It means that views and groups can be constructed from a const registry and they
+propagate the constness of the registry to the types involved. As an example:
 
 ```cpp
 entt::view<const position, const velocity> view = std::as_const(registry).view<const position, const velocity>();
@@ -1501,7 +1502,7 @@ entt::view<position, const velocity> view = registry.view<position, const veloci
 In the example above, `view` can be used to access either read-only or writable
 `position` components while `velocity` components are read-only in all
 cases.<br/>
-In other terms, these statements are all valid:
+Similarly, these statements are all valid:
 
 ```cpp
 position &pos = view.get<position>(entity);
@@ -1520,8 +1521,7 @@ std::tuple<position &, velocity &> tup = view.get<position, velocity>(entity);
 std::tuple<const position &, velocity &> ctup = view.get<const position, velocity>(entity);
 ```
 
-Similarly, the `each` member functions will propagate constness to the type of
-the components returned during iterations:
+The `each` member functions also propagates constness to its _return values_:
 
 ```cpp
 view.each([](auto entity, position &pos, const velocity &vel) {
@@ -1529,9 +1529,8 @@ view.each([](auto entity, position &pos, const velocity &vel) {
 });
 ```
 
-Obviously, a caller can still refer to the `position` components through a const
-reference because of the rules of the language that fortunately already allow
-it.
+A caller can still refer to the `position` components through a const reference
+because of the rules of the language that fortunately already allow it.
 
 The same concepts apply to groups as well.
 
@@ -1549,8 +1548,7 @@ registry.each([](auto entity) {
 });
 ```
 
-It returns to the caller all the entities that are still in use by means of the
-given function.<br/>
+It returns to the caller all the entities that are still in use.<br/>
 As a rule of thumb, consider using a view or a group if the goal is to iterate
 entities that have a determinate set of components. These tools are usually much
 faster than combining this function with a bunch of custom tests.<br/>
@@ -1581,8 +1579,7 @@ Most of the _ECS_ available out there don't allow to create and destroy entities
 and components during iterations.<br/>
 `EnTT` partially solves the problem with a few limitations:
 
-* Creating entities and components is allowed during iterations in almost all
-  cases.
+* Creating entities and components is allowed during iterations in most cases.
 
 * Deleting the current entity or removing its components is allowed during
   iterations. For all the other entities, destroying them or removing their
@@ -1594,7 +1591,7 @@ Consider the following example:
 
 ```cpp
 registry.view<position>([&](const auto entity, auto &pos) {
-    registry.assign<position>(registry.create(), 0., 0.);
+    registry.emplace<position>(registry.create(), 0., 0.);
     pos.x = 0.; // warning: dangling pointer
 });
 ```
@@ -1668,22 +1665,28 @@ performance and memory usage. However, this also has consequences that are worth
 mentioning.
 
 When an empty type is detected, it's not instantiated in any case. Therefore,
-only the entities to which it's assigned are made available. All the iterators
-as well as the `get` member functions of the registry, the views and the groups
-will return temporary objects. Similarly, some functions such as `try_get` or
-the raw access to the list of components aren't available for this kind of
-types.<br/>
-On the other hand, iterations are faster because only the entities to which the
-type is assigned are considered. Moreover, less memory is used, since there
-doesn't exist any instance of the component, no matter how many entities it is
-assigned to.
+only the entities to which it's assigned are made available.<br/>
+There doesn't exist a way to _iterate_ empty types. Views and groups will never
+return instances of empty types (for example, during a call to `each`) and some
+functions such as `try_get` or the raw access to the list of components aren't
+available for them. Finally, the `sort` functionality accepts only callbacks
+that require to return entities rather than components:
 
-For similar reasons, wherever a function type of a listener accepts a component,
-it cannot be caught by a non-const reference. Capture it by copy or by const
-reference instead.
+```cpp
+registry.sort<empty_type>([](const entt::entity lhs, const entt::entity rhs) {
+    return entt::registry::entity(lhs) < entt::registry::entity(rhs);
+});
+```
+
+On the other hand, iterations are faster because only the entities to which the
+type is assigned are considered. Moreover, less memory is used, mainly because
+there doesn't exist any instance of the component, no matter how many entities
+it is assigned to.
 
 More in general, none of the features offered by the library is affected, but
-for the ones that require to return actual instances.
+for the ones that require to return actual instances.<br/>
+This optimization can be disabled by defining the `ENTT_NO_ETO` macro. In this
+case, empty types will be treated like all other types, no matter what.
 
 # Multithreading
 
@@ -1721,9 +1724,9 @@ expedients.
 
 ## Iterators
 
-A special mention is needed for the iterators returned by the views and the
-groups. Most of the time they meet the requirements of random access iterators,
-in all cases they meet at least the requirements of forward iterators.<br/>
+A special mention is needed for the iterators returned by views and groups. Most
+of the times they meet the requirements of random access iterators, in all cases
+they meet at least the requirements of bidirectional iterators.<br/>
 In other terms, they are suitable for use with the parallel algorithms of the
 standard library. If it's not clear, this is a great thing.
 

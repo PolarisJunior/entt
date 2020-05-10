@@ -46,9 +46,15 @@ I hope this list can grow much more in the future:
     made in C++ with the `SDL2` and `EnTT` libraries.
   * [Mirrors lasers and robots](https://github.com/guillaume-haerinck/imac-tower-defense):
     a small tower defense game based on mirror orientation.
+  * [PopHead](https://github.com/SPC-Some-Polish-Coders/PopHead/): 2D, Zombie,
+    RPG game made from scratch in C++.
+  * [Robotligan](https://github.com/Trisslotten/robotligan): multiplayer
+    football game.
+  * [DungeonSlayer](https://github.com/alohaeee/DungeonSlayer): 2D game made
+    from scratch in C++.
 
 * Engines and the like:
-  * [Fling Engine](https://github.com/flingengine/FlingEngine): A Vulkan game
+  * [Fling Engine](https://github.com/flingengine/FlingEngine): a Vulkan game
     engine with a focus on data oriented design.
   * [Apparently](https://teamwisp.github.io/credits/)
     [Wisp](https://teamwisp.github.io/product/) by
@@ -60,12 +66,20 @@ I hope this list can grow much more in the future:
     [Qub3d](https://qub3d.org/): because blocks should be open source.
   * [shiva](https://github.com/Milerius/shiva): modern C++ engine with
     modularity.
-  * [NovusCore](https://github.com/novuscore/NovusCore): A modern take on World
+  * [NovusCore](https://github.com/novuscore/NovusCore): a modern take on World
     of Warcraft emulation.
   * [ImGui/EnTT editor](https://github.com/Green-Sky/imgui_entt_entity_editor):
-    A drop-in, single-file entity editor for `EnTT` that uses `ImGui` as
+    a drop-in, single-file entity editor for `EnTT` that uses `ImGui` as
     graphical backend (with
     [demo code](https://github.com/Green-Sky/imgui_entt_entity_editor_demo)).
+  * [SgOgl](https://github.com/stwe/SgOgl): a game engine library for OpenGL
+    developed for educational purposes.
+  * [Lumos](https://github.com/jmorton06/Lumos): game engine written in C++
+    using OpenGL and Vulkan.
+  * [Chrysalis](https://github.com/ivanhawkes/Chrysalis): action RPG SDK for
+    CRYENGINE games.
+  * [LM-Engine](https://github.com/Lawrencemm/LM-Engine): the Vim of game
+    engines.
 
 * Articles and blog posts:
   * [Some posts](https://skypjack.github.io/tags/#entt) on my personal
@@ -81,28 +95,40 @@ I hope this list can grow much more in the future:
     giant space battle.
   * [Conan Adventures (SFML and EnTT in C++)](https://leinnan.github.io/blog/conan-adventuressfml-and-entt-in-c.html):
     create projects in modern C++ using `SFML`, `EnTT`, `Conan` and `CMake`.
+  * [Adding EnTT ECS to Chrysalis](https://www.tauradius.com/post/adding-an-ecs-to-chrysalis/):
+    a blog entry about the process followed and the results of the integration
+    of `EnTT` into `Chrysalis`.
+  * [Creating Minecraft in One Week with C++ and Vulkan](https://vazgriz.com/189/creating-minecraft-in-one-week-with-c-and-vulkan/):
+    a crack at recreating Minecraft in one week using a custom C++ engine and
+    Vulkan ([code included](https://github.com/vazgriz/VoxelGame)).
 
 * Any Other Business:
-  * The [ArcGIS Runtime SDKs](https://developers.arcgis.com/arcgis-runtime/)
-    by [Esri](https://www.esri.com/): they use `EnTT` for the internal ECS and
-    the cross platform C++ rendering engine. The SDKs are utilized by a lot of
+  * [ArcGIS Runtime SDKs](https://developers.arcgis.com/arcgis-runtime/) by
+    [Esri](https://www.esri.com/): they use `EnTT` for the internal ECS and the
+    cross platform C++ rendering engine. The SDKs are utilized by a lot of
     enterprise custom apps, as well as by Esri for its own public applications
     such as
     [Explorer](https://play.google.com/store/apps/details?id=com.esri.explorer),
     [Collector](https://play.google.com/store/apps/details?id=com.esri.arcgis.collector)
     and
     [Navigator](https://play.google.com/store/apps/details?id=com.esri.navigator).
+  * [FASTSUITE Edition 2](https://www.fastsuite.com/en_EN/fastsuite/fastsuite-edition-2.html)
+    by [Cenit](http://www.cenit.com/en_EN/about-us/overview.html): they use
+    `EnTT` to drive their simulation, that is, the communication between robot
+    controller emulator and renderer.
   * [Apparently](https://www.linkedin.com/in/skypjack/)
     [NIO](https://www.nio.io/): there was a collaboration to make some changes
     to `EnTT`, at the time used for internal projects.
   * [Apparently](https://www.linkedin.com/jobs/view/architekt-c%2B%2B-at-tieto-1219512333/)
     [Tieto](https://www.tieto.com/): they published a job post where `EnTT` was
     listed on their software stack.
+  * [Sequentity](https://github.com/alanjfs/sequentity): A MIDI-like
+    sequencer/tracker for C++ and `ImGui` (with `Magnum` and `EnTT`).
   * [Godot meets EnTT](https://github.com/portaloffreedom/godot_entt_example/):
-    A simple example on how to use `EnTT` within
+    a simple example on how to use `EnTT` within
     [`Godot`](https://godotengine.org/).
   * [Godot and GameNetworkingSockets meet EnTT](https://github.com/portaloffreedom/godot_entt_net_example):
-    A simple example on how to use `EnTT` and
+    a simple example on how to use `EnTT` and
     [`GameNetworkingSockets`](https://github.com/ValveSoftware/GameNetworkingSockets)
     within [`Godot`](https://godotengine.org/).
   * [MatchOneEntt](https://github.com/mhaemmerle/MatchOneEntt): port of
